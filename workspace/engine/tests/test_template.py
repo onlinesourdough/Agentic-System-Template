@@ -92,14 +92,20 @@ class SystemTemplateTests(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
 
         failed = tracer.trace_once(root, simulate_failure=True)
+        continuation = tracer.trace_once(root)
         recovered = tracer.trace_once(root, recover=True, promote_example=True)
 
         self.assertEqual(failed.status, "failed")
         self.assertTrue(failed.failure_path is not None and failed.failure_path.is_file())
+        self.assertEqual(continuation.run_id, "run-0002")
+        self.assertEqual(continuation.previous_run_id, "run-0001")
+        self.assertEqual(continuation.previous_run_relation, "predecessor")
         self.assertEqual(recovered.status, "succeeded")
         self.assertEqual(recovered.previous_run_id, "run-0001")
         self.assertEqual(recovered.previous_run_relation, "recovery")
         self.assertTrue(recovered.recovery_path is not None and recovered.recovery_path.is_file())
+        with self.assertRaises(tracer.TraceError):
+            tracer.trace_once(root, recover=True)
         records = [
             json.loads(line)
             for line in (root / "workspace/history/runs.jsonl").read_text().splitlines()
@@ -107,10 +113,13 @@ class SystemTemplateTests(unittest.TestCase):
         ]
         self.assertEqual(records[0]["failure"]["ref"], "workspace/runs/run-0001/failure.json")
         self.assertIsNone(records[0]["recovery"])
-        self.assertEqual(records[1]["recovery"]["from_run_id"], "run-0001")
-        self.assertEqual(records[1]["recovery"]["ref"], "workspace/runs/run-0002/recovery.json")
+        self.assertIsNone(records[1]["recovery"])
+        self.assertEqual(records[2]["recovery"]["from_run_id"], "run-0001")
+        self.assertEqual(records[2]["recovery"]["ref"], "workspace/runs/run-0003/recovery.json")
         self.assertEqual(records[0]["previous_run_relation"], None)
-        self.assertEqual(records[1]["previous_run_relation"], "recovery")
+        self.assertEqual(records[1]["previous_run_relation"], "predecessor")
+        self.assertEqual(records[2]["previous_run_relation"], "recovery")
+        self.assertEqual(checks.check_structure(root), [])
 
     def test_recovery_is_single_use_per_failed_run(self) -> None:
         temporary, root = self._temporary_seed()
@@ -144,6 +153,40 @@ class SystemTemplateTests(unittest.TestCase):
         errors = checks.check_structure(root)
 
         self.assertTrue(any("stale public wording" in error for error in errors))
+
+    def test_local_schema_wording_is_allowed(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        local_schema = "This System owns a versioned JSON schema for its local contract.\n"
+        (root / "docs" / "local.md").write_text(local_schema)
+
+        self.assertEqual(checks._contains_stale_language(local_schema), [])
+        self.assertEqual(checks.check_structure(root), [])
+
+    def test_ledger_checker_rejects_repeated_recovery_reference(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+
+        tracer.trace_once(root, simulate_failure=True)
+        tracer.trace_once(root, recover=True)
+        records = [
+            json.loads(line)
+            for line in (root / "workspace/history/runs.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
+        duplicate = dict(records[1])
+        duplicate["run_id"] = "run-0003"
+        duplicate["output_ref"] = "workspace/runs/run-0003/output.json"
+        duplicate["proof_ref"] = "workspace/runs/run-0003/proof.json"
+        history = root / "workspace/history/runs.jsonl"
+        history.write_text(
+            "\n".join(json.dumps(record, sort_keys=True) for record in records + [duplicate])
+            + "\n"
+        )
+
+        errors = checks.check_structure(root)
+
+        self.assertTrue(any("more than once" in error for error in errors))
 
 
 if __name__ == "__main__":
