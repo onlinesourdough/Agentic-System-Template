@@ -34,6 +34,7 @@ REQUIRED_PATHS = (
     "AGENTS.md",
     "README.md",
     ".agents/skills/system-template/SKILL.md",
+    "workspace/README.md",
     "workspace/runs",
     "workspace/history/runs.jsonl",
     "workspace/learning",
@@ -65,7 +66,14 @@ def repository_root() -> Path:
 
 
 def _public_text_files(root: Path) -> Iterable[Path]:
-    roots = [root / "AGENTS.md", root / "README.md", root / ".agents", root / "docs", root / "examples"]
+    roots = [
+        root / "AGENTS.md",
+        root / "README.md",
+        root / ".agents",
+        root / "docs",
+        root / "examples",
+        root / "workspace" / "README.md",
+    ]
     for candidate in roots:
         if candidate.is_file():
             yield candidate

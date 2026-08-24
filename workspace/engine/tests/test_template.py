@@ -32,6 +32,15 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(checks.check_structure(ROOT), [])
         self.assertTrue((ROOT / "workspace" / "history" / "runs.jsonl").is_file())
 
+    def test_workspace_readme_is_required(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        (root / "workspace" / "README.md").unlink()
+
+        errors = checks.check_structure(root)
+
+        self.assertIn("required path is missing: workspace/README.md", errors)
+
     def _temporary_seed(self):
         temporary = tempfile.TemporaryDirectory()
         temp_root = Path(temporary.name) / "seed"
