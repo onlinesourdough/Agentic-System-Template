@@ -230,10 +230,9 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
         if not isinstance(run_id, str) or not run_id:
             errors.append(f"ledger line {line_number} must have a non-empty run_id")
             continue
-        if run_id in seen:
+        duplicate_run_id = run_id in seen
+        if duplicate_run_id:
             errors.append(f"ledger line {line_number} repeats run_id {run_id!r}")
-        else:
-            seen[run_id] = record
 
         previous_id = record.get("previous_run_id")
         relation = record.get("previous_run_relation")
@@ -247,7 +246,9 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
             )
         if previous_id is not None and not isinstance(previous_id, str):
             errors.append(f"ledger line {line_number} has an invalid previous_run_id")
-        if isinstance(previous_id, str) and previous_id not in seen:
+        if isinstance(previous_id, str) and (
+            previous_id == run_id or previous_id not in seen
+        ):
             errors.append(
                 f"ledger line {line_number} points to a run that is not earlier in the ledger"
             )
@@ -283,6 +284,8 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
 
         if record.get("status") == "failed" and record.get("failure") is None:
             errors.append(f"ledger line {line_number} failed without failure evidence")
+        if not duplicate_run_id:
+            seen[run_id] = record
 
 
 def _parser() -> argparse.ArgumentParser:
