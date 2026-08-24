@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -44,6 +45,19 @@ REQUIRED_PATHS = (
 )
 STALE_ROOT_NAMES = {"engine", "scripts", "tests"}
 CURATED_EXAMPLE_FIELDS = {"curated", "example", "source_run_id", "status"}
+LEDGER_FIELDS = {
+    "run_id",
+    "started_at",
+    "finished_at",
+    "status",
+    "input_ref",
+    "output_ref",
+    "proof_ref",
+    "previous_run_id",
+    "previous_run_relation",
+    "failure",
+    "recovery",
+}
 
 
 def repository_root() -> Path:
@@ -66,7 +80,10 @@ def _contains_stale_language(text: str) -> List[str]:
     # public artifact containing the stale wording it is designed to catch.
     forbidden = (
         "hand" + "off",
+        "hand" + " " + "off",
         "sche" + "ma",
+        "shared " + "schema",
+        "shared-" + "schema",
         "runtime " + "dependency",
         "runtime" + "-dependency",
         "shared " + "package",
@@ -108,10 +125,14 @@ def check_structure(root: Path) -> List[str]:
     for path in (root / "workspace", root / "examples", root / "docs"):
         if path.is_symlink():
             errors.append(f"functional root must be a directory, not a symlink: {path.name}/")
+        elif not path.is_dir():
+            errors.append(f"functional root must be a directory: {path.name}/")
 
     history = root / "workspace" / "history" / "runs.jsonl"
     if history.exists() and not history.is_file():
         errors.append("workspace/history/runs.jsonl must be a file")
+    if history.is_file():
+        _check_ledger(history, root, errors)
 
     for path in _public_text_files(root):
         try:
@@ -168,6 +189,44 @@ def _check_example_tree(directory: Path, errors: List[str]) -> bool:
     if directory != directory.parents[0] and not found_leaf and visible:
         errors.append(f"example container has no curated proof: {directory.as_posix()}/")
     return found_leaf
+
+
+def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
+    """Validate the small append-only ledger without imposing a framework."""
+
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as exc:
+        errors.append(f"ledger cannot be read: {path.relative_to(root)} ({exc})")
+        return
+
+    for line_number, line in enumerate(lines, start=1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            errors.append(f"ledger line {line_number} is not valid JSON: {exc.msg}")
+            continue
+        if not isinstance(record, dict):
+            errors.append(f"ledger line {line_number} must be a JSON object")
+            continue
+
+        missing = sorted(LEDGER_FIELDS.difference(record))
+        if missing:
+            errors.append(
+                f"ledger line {line_number} is missing fields: {', '.join(missing)}"
+            )
+        previous_id = record.get("previous_run_id")
+        relation = record.get("previous_run_relation")
+        if previous_id is None and relation is not None:
+            errors.append(
+                f"ledger line {line_number} has a relation without a previous run"
+            )
+        if previous_id is not None and relation not in {"predecessor", "recovery"}:
+            errors.append(
+                f"ledger line {line_number} has an invalid previous-run relation"
+            )
 
 
 def _parser() -> argparse.ArgumentParser:

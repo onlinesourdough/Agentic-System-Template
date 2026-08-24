@@ -47,6 +47,7 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(result.run_id, "run-0001")
         self.assertEqual(result.status, "succeeded")
         self.assertEqual(result.previous_run_id, None)
+        self.assertEqual(result.previous_run_relation, None)
         self.assertTrue(result.output_path.is_file())
         self.assertTrue(result.proof_path.is_file())
         self.assertTrue(result.example_path is not None and result.example_path.is_dir())
@@ -74,6 +75,7 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(first.run_id, "run-0001")
         self.assertEqual(second.run_id, "run-0002")
         self.assertEqual(second.previous_run_id, "run-0001")
+        self.assertEqual(second.previous_run_relation, "predecessor")
         ledger_lines = [
             line
             for line in (root / "workspace/history/runs.jsonl").read_text().splitlines()
@@ -81,6 +83,9 @@ class SystemTemplateTests(unittest.TestCase):
         ]
         self.assertEqual(len(ledger_lines), 2)
         self.assertEqual(json.loads(ledger_lines[1])["previous_run_id"], "run-0001")
+        self.assertEqual(
+            json.loads(ledger_lines[1])["previous_run_relation"], "predecessor"
+        )
 
     def test_failure_and_recovery_evidence_are_linked(self) -> None:
         temporary, root = self._temporary_seed()
@@ -93,6 +98,7 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertTrue(failed.failure_path is not None and failed.failure_path.is_file())
         self.assertEqual(recovered.status, "succeeded")
         self.assertEqual(recovered.previous_run_id, "run-0001")
+        self.assertEqual(recovered.previous_run_relation, "recovery")
         self.assertTrue(recovered.recovery_path is not None and recovered.recovery_path.is_file())
         records = [
             json.loads(line)
@@ -103,6 +109,8 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertIsNone(records[0]["recovery"])
         self.assertEqual(records[1]["recovery"]["from_run_id"], "run-0001")
         self.assertEqual(records[1]["recovery"]["ref"], "workspace/runs/run-0002/recovery.json")
+        self.assertEqual(records[0]["previous_run_relation"], None)
+        self.assertEqual(records[1]["previous_run_relation"], "recovery")
 
     def test_stale_public_wording_is_rejected(self) -> None:
         temporary, root = self._temporary_seed()

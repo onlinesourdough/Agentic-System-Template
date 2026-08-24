@@ -57,7 +57,7 @@ python3 workspace/engine/tracer.py --promote-example
 It inspects prior records for the route, chooses the next deterministic run
 ID, writes structured input/output/proof files under `workspace/runs/`,
 appends exactly one JSON object to `workspace/history/runs.jsonl`, and then
-creates `examples/demo-route-run-<run-id>/` as an explicit standalone proof.
+creates `examples/demo-route/<run-id>/` as an explicit standalone proof.
 The default demonstration timestamp is fixed; `--timestamp` can supply an
 ISO-8601 UTC value for another deterministic fixture.
 

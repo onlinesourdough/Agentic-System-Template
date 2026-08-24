@@ -36,6 +36,7 @@ class TraceResult:
     ledger_path: Path
     example_path: Optional[Path]
     previous_run_id: Optional[str]
+    previous_run_relation: Optional[str]
     inspected_prior_runs: int
     failure_path: Optional[Path]
     recovery_path: Optional[Path]
@@ -165,6 +166,13 @@ def trace_once(
     if recover and failed_prior is None:
         raise TraceError("--recover requires a previous failed demo run")
 
+    if previous_run_id is None:
+        previous_run_relation = None
+    elif recover:
+        previous_run_relation = "recovery"
+    else:
+        previous_run_relation = "predecessor"
+
     run_id = _next_run_id(records)
     run_dir = root / "workspace" / "runs" / run_id
     if run_dir.exists():
@@ -187,6 +195,7 @@ def trace_once(
         status = "failed"
         output = {
             "previous_run_id": previous_run_id,
+            "previous_run_relation": previous_run_relation,
             "result": "The deterministic demo route stopped at its failure fixture.",
             "route": ROUTE,
             "run_id": run_id,
@@ -211,6 +220,7 @@ def trace_once(
         recovered_from = failed_prior.get("run_id") if recover and failed_prior else None
         output = {
             "previous_run_id": previous_run_id,
+            "previous_run_relation": previous_run_relation,
             "recovered_from": recovered_from,
             "result": "The primary System demo route completed deterministically.",
             "route": ROUTE,
@@ -249,6 +259,7 @@ def trace_once(
         "input_ref": INPUT_REF,
         "ledger_ref": f"workspace/history/runs.jsonl#{run_id}",
         "previous_run_id": previous_run_id,
+        "previous_run_relation": previous_run_relation,
         "proof_ref": _relative(proof_path, root),
         "recovery_ref": _relative(recovery_path, root) if recovery_path else None,
         "run_id": run_id,
@@ -269,6 +280,7 @@ def trace_once(
         "input_ref": INPUT_REF,
         "output_ref": _relative(output_path, root),
         "previous_run_id": previous_run_id,
+        "previous_run_relation": previous_run_relation,
         "proof_ref": _relative(proof_path, root),
         "recovery": (
             {
@@ -296,6 +308,7 @@ def trace_once(
         ledger_path=ledger_path,
         example_path=example_path,
         previous_run_id=previous_run_id,
+        previous_run_relation=previous_run_relation,
         failure_path=failure_path,
         recovery_path=recovery_path,
         inspected_prior_runs=len(relevant),

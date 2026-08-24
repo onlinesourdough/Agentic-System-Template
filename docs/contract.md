@@ -43,6 +43,9 @@ recovery
 The values are references and small structured facts. Input text is not
 transcribed into the ledger. A failed attempt is retained; a later recovery is
 a new append with a relation to that attempt and its own evidence file.
+`previous_run_relation` is `null` for the first relevant run, `predecessor`
+for an ordinary continuation, and `recovery` when the route explicitly
+recovers a failed predecessor.
 
 ## Promotion boundary
 

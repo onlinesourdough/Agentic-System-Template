@@ -20,7 +20,9 @@ proof into `examples/` only by deliberate choice.
    proof files. A failure writes failure evidence in that same run directory.
 4. Append one JSON object to `workspace/history/runs.jsonl`. Each record keeps
    the run ID, timestamps, status, input/output/proof references, previous-run
-   relation, and failure/recovery references.
+   relation, and failure/recovery references. Use `null` for the first
+   relevant run, `predecessor` for ordinary continuation, and `recovery` for
+   an explicit recovery route.
 5. If a recovery is needed, create a new run that points to the failed run and
    writes a recovery evidence file. Do not rewrite the failed record.
 6. Promote an example only when the caller explicitly requests it. A promoted
