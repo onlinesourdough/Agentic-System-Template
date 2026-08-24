@@ -112,6 +112,29 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(records[0]["previous_run_relation"], None)
         self.assertEqual(records[1]["previous_run_relation"], "recovery")
 
+    def test_recovery_is_single_use_per_failed_run(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+
+        failed = tracer.trace_once(root, simulate_failure=True)
+        recovered = tracer.trace_once(root, recover=True)
+
+        self.assertEqual(failed.run_id, "run-0001")
+        self.assertEqual(recovered.run_id, "run-0002")
+        self.assertEqual(recovered.previous_run_id, "run-0001")
+        with self.assertRaisesRegex(
+            tracer.TraceError, "previous unresolved failed demo run"
+        ):
+            tracer.trace_once(root, recover=True)
+        self.assertFalse((root / "workspace/runs/run-0003").exists())
+
+        second_failure = tracer.trace_once(root, simulate_failure=True)
+        second_recovery = tracer.trace_once(root, recover=True)
+        self.assertEqual(second_failure.run_id, "run-0003")
+        self.assertEqual(second_recovery.run_id, "run-0004")
+        self.assertEqual(second_recovery.previous_run_id, "run-0003")
+        self.assertEqual(second_recovery.previous_run_relation, "recovery")
+
     def test_stale_public_wording_is_rejected(self) -> None:
         temporary, root = self._temporary_seed()
         self.addCleanup(temporary.cleanup)

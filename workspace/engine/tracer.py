@@ -157,14 +157,29 @@ def trace_once(
     relevant = [
         record for record in records if record.get("input_ref") == INPUT_REF
     ]
-    previous = relevant[-1] if relevant else None
-    previous_run_id = previous.get("run_id") if previous else None
+    recovered_failures = {
+        recovery.get("from_run_id")
+        for record in relevant
+        if isinstance(recovery := record.get("recovery"), dict)
+        and recovery.get("from_run_id")
+    }
     failed_prior = next(
-        (record for record in reversed(relevant) if record.get("status") == "failed"),
+        (
+            record
+            for record in reversed(relevant)
+            if record.get("status") == "failed"
+            and record.get("run_id") not in recovered_failures
+        ),
         None,
     )
     if recover and failed_prior is None:
-        raise TraceError("--recover requires a previous failed demo run")
+        raise TraceError("--recover requires a previous unresolved failed demo run")
+
+    if recover:
+        previous_run_id = failed_prior.get("run_id")
+    else:
+        previous = relevant[-1] if relevant else None
+        previous_run_id = previous.get("run_id") if previous else None
 
     if previous_run_id is None:
         previous_run_relation = None

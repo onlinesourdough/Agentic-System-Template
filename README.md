@@ -8,10 +8,10 @@ how operational truth can persist without becoming a runtime framework.
 
 AIOS has three first-class concepts:
 
-- **Space** — the boundary in which work is organized.
+- **Space** — persistent business/domain context in which work is situated.
 - **System** — the persistent agentic capability that routes and performs
   work.
-- **Project** — the bounded outcome being advanced by a System.
+- **Project** — a bounded, self-owning outcome created from owner intent.
 
 Template, resource, archive, and skill support those concepts; they are not
 additional AIOS types.
@@ -68,7 +68,9 @@ python3 workspace/engine/tracer.py --simulate-failure
 python3 workspace/engine/tracer.py --recover --promote-example
 ```
 
-The failed run remains in the ledger, and the recovery run points back to it.
+The failed run remains in the ledger, and one recovery run points back to its
+unresolved failed predecessor. A second recovery attempt fails until another
+failure is recorded.
 No orchestration service, database, or external package is needed.
 
 ## Checks and prerequisites

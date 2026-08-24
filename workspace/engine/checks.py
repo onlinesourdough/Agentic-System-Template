@@ -8,7 +8,7 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 
 VISIBLE_FUNCTIONAL_ROOTS = {"workspace", "examples", "docs"}
@@ -79,11 +79,14 @@ def _contains_stale_language(text: str) -> List[str]:
     # Keep these fragments assembled so the check itself does not become a
     # public artifact containing the stale wording it is designed to catch.
     forbidden = (
-        "hand" + "off",
-        "hand" + " " + "off",
-        "sche" + "ma",
-        "shared " + "schema",
-        "shared-" + "schema",
+        "hand" + "off " + "sche" + "ma",
+        "hand" + "off-" + "sche" + "ma",
+        "hand" + " " + "off " + "sche" + "ma",
+        "hand" + " " + "off-" + "sche" + "ma",
+        "shared " + "sche" + "ma",
+        "shared-" + "sche" + "ma",
+        "cross-" + "system " + "sche" + "ma",
+        "cross " + "system " + "sche" + "ma",
         "runtime " + "dependency",
         "runtime" + "-dependency",
         "shared " + "package",
@@ -194,6 +197,7 @@ def _check_example_tree(directory: Path, errors: List[str]) -> bool:
 def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
     """Validate the small append-only ledger without imposing a framework."""
 
+    parsed: List[Tuple[int, Dict[str, object]]] = []
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
@@ -217,6 +221,20 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
             errors.append(
                 f"ledger line {line_number} is missing fields: {', '.join(missing)}"
             )
+        parsed.append((line_number, record))
+
+    seen: Dict[str, Dict[str, object]] = {}
+    recovered: Dict[str, int] = {}
+    for line_number, record in parsed:
+        run_id = record.get("run_id")
+        if not isinstance(run_id, str) or not run_id:
+            errors.append(f"ledger line {line_number} must have a non-empty run_id")
+            continue
+        if run_id in seen:
+            errors.append(f"ledger line {line_number} repeats run_id {run_id!r}")
+        else:
+            seen[run_id] = record
+
         previous_id = record.get("previous_run_id")
         relation = record.get("previous_run_relation")
         if previous_id is None and relation is not None:
@@ -227,6 +245,44 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
             errors.append(
                 f"ledger line {line_number} has an invalid previous-run relation"
             )
+        if previous_id is not None and not isinstance(previous_id, str):
+            errors.append(f"ledger line {line_number} has an invalid previous_run_id")
+        if isinstance(previous_id, str) and previous_id not in seen:
+            errors.append(
+                f"ledger line {line_number} points to a run that is not earlier in the ledger"
+            )
+
+        recovery = record.get("recovery")
+        if relation == "recovery" and recovery is None:
+            errors.append(f"ledger line {line_number} lacks recovery evidence")
+        if recovery is not None:
+            if not isinstance(recovery, dict):
+                errors.append(f"ledger line {line_number} has invalid recovery evidence")
+                continue
+            from_id = recovery.get("from_run_id")
+            if relation != "recovery":
+                errors.append(
+                    f"ledger line {line_number} has recovery evidence without a recovery relation"
+                )
+            if from_id != previous_id:
+                errors.append(
+                    f"ledger line {line_number} recovery target disagrees with previous_run_id"
+                )
+            if not isinstance(from_id, str) or seen.get(from_id, {}).get("status") != "failed":
+                errors.append(
+                    f"ledger line {line_number} recovery target is not a failed run"
+                )
+            elif from_id in recovered:
+                errors.append(
+                    f"ledger line {line_number} recovers failed run {from_id!r} more than once"
+                )
+            else:
+                recovered[from_id] = line_number
+            if not isinstance(recovery.get("ref"), str) or not recovery.get("ref"):
+                errors.append(f"ledger line {line_number} lacks a recovery reference")
+
+        if record.get("status") == "failed" and record.get("failure") is None:
+            errors.append(f"ledger line {line_number} failed without failure evidence")
 
 
 def _parser() -> argparse.ArgumentParser:

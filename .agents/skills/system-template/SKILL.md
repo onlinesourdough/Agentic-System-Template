@@ -23,8 +23,9 @@ proof into `examples/` only by deliberate choice.
    relation, and failure/recovery references. Use `null` for the first
    relevant run, `predecessor` for ordinary continuation, and `recovery` for
    an explicit recovery route.
-5. If a recovery is needed, create a new run that points to the failed run and
-   writes a recovery evidence file. Do not rewrite the failed record.
+5. If a recovery is needed, create one new run that points to an unresolved
+   failed run and writes a recovery evidence file. Do not rewrite the failed
+   record or recover the same failed run twice.
 6. Promote an example only when the caller explicitly requests it. A promoted
    example must include its own `README.md` and `proof.json`, and must remain
    understandable without importing this repository.

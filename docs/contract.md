@@ -6,9 +6,9 @@ The first-class AIOS concepts are:
 
 | Concept | Meaning |
 | --- | --- |
-| Space | The boundary in which work is organized. |
+| Space | Persistent business/domain context in which work is situated. |
 | System | The persistent agentic capability that performs or routes work. |
-| Project | The bounded outcome being advanced. |
+| Project | A bounded, self-owning outcome created from owner intent. |
 
 Template, resource, archive, and skill are supporting constructs. The
 filesystem uses them without promoting them to new AIOS concepts.
@@ -45,7 +45,8 @@ transcribed into the ledger. A failed attempt is retained; a later recovery is
 a new append with a relation to that attempt and its own evidence file.
 `previous_run_relation` is `null` for the first relevant run, `predecessor`
 for an ordinary continuation, and `recovery` when the route explicitly
-recovers a failed predecessor.
+recovers an unresolved failed predecessor. Each failed run can be the target of
+at most one recovery record.
 
 ## Promotion boundary
 
