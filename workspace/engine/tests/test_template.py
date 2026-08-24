@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from shutil import copytree
+from shutil import copytree, rmtree
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -27,6 +29,9 @@ checks = _load_module("system_template_checks", ENGINE / "checks.py")
 tracer = _load_module("system_template_tracer", ENGINE / "tracer.py")
 
 
+REPEATABILITY_CHILD = "SYSTEM_TEMPLATE_REPEATABILITY_CHILD"
+
+
 class SystemTemplateTests(unittest.TestCase):
     def test_repository_shell_is_canonical(self) -> None:
         self.assertEqual(checks.check_structure(ROOT), [])
@@ -41,11 +46,125 @@ class SystemTemplateTests(unittest.TestCase):
 
         self.assertIn("required path is missing: workspace/README.md", errors)
 
-    def _temporary_seed(self):
+    def _temporary_seed(self, source_root: Path = ROOT):
         temporary = tempfile.TemporaryDirectory()
         temp_root = Path(temporary.name) / "seed"
-        copytree(ROOT, temp_root, ignore=lambda _path, names: {".git", "__pycache__"}.intersection(names))
+        copytree(
+            source_root,
+            temp_root,
+            ignore=lambda _path, names: {".git", "__pycache__"}.intersection(names),
+        )
+        self._reset_operational_state(temp_root)
         return temporary, temp_root
+
+    @staticmethod
+    def _reset_operational_state(root: Path) -> None:
+        """Reset only the copied seed's mutable operational artifacts."""
+
+        history = root / "workspace" / "history" / "runs.jsonl"
+        history.write_text("", encoding="utf-8")
+        for relative in (
+            "workspace/runs",
+            "workspace/learning",
+            "examples",
+        ):
+            directory = root / relative
+            if not directory.is_dir():
+                continue
+            for child in directory.iterdir():
+                if child.name == ".gitkeep":
+                    continue
+                if child.is_dir() and not child.is_symlink():
+                    rmtree(child)
+                else:
+                    child.unlink()
+
+    @staticmethod
+    def _run_full_suite(root: Path) -> subprocess.CompletedProcess[str]:
+        environment = os.environ.copy()
+        environment[REPEATABILITY_CHILD] = "1"
+        return subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                str(root / "workspace" / "engine" / "tests"),
+                "-p",
+                "test_*.py",
+            ],
+            cwd=root,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_repeatability_survives_active_tracer_state(self) -> None:
+        if os.environ.get(REPEATABILITY_CHILD) == "1":
+            self.skipTest("parent test owns the repeatability subprocess proof")
+
+        temporary, active_root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        source_history = (ROOT / "workspace" / "history" / "runs.jsonl").read_text(
+            encoding="utf-8"
+        )
+
+        pristine = self._run_full_suite(active_root)
+        self.assertEqual(
+            pristine.returncode,
+            0,
+            pristine.stdout + "\n" + pristine.stderr,
+        )
+
+        success = tracer.trace_once(active_root, promote_example=True)
+        failure = tracer.trace_once(active_root, simulate_failure=True)
+        recovery = tracer.trace_once(active_root, recover=True, promote_example=True)
+        self.assertEqual(success.run_id, "run-0001")
+        self.assertEqual(success.status, "succeeded")
+        self.assertEqual(failure.run_id, "run-0002")
+        self.assertEqual(failure.status, "failed")
+        self.assertEqual(recovery.run_id, "run-0003")
+        self.assertEqual(recovery.status, "succeeded")
+        self.assertEqual(recovery.previous_run_id, "run-0002")
+        with self.assertRaisesRegex(
+            tracer.TraceError, "previous unresolved failed demo run"
+        ):
+            tracer.trace_once(active_root, recover=True)
+
+        repeat = self._run_full_suite(active_root)
+        self.assertEqual(repeat.returncode, 0, repeat.stdout + "\n" + repeat.stderr)
+        self.assertEqual(
+            (ROOT / "workspace" / "history" / "runs.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            source_history,
+        )
+
+    def test_temporary_seed_preserves_placeholders_without_active_state(self) -> None:
+        active_temporary, active_root = self._temporary_seed()
+        self.addCleanup(active_temporary.cleanup)
+        tracer.trace_once(active_root, promote_example=True)
+        tracer.trace_once(active_root, simulate_failure=True)
+        tracer.trace_once(active_root, recover=True, promote_example=True)
+
+        temporary, root = self._temporary_seed(source_root=active_root)
+        self.addCleanup(temporary.cleanup)
+
+        self.assertEqual(
+            (root / "workspace" / "history" / "runs.jsonl").read_text(
+                encoding="utf-8"
+            ),
+            "",
+        )
+        for relative in ("workspace/runs", "workspace/learning", "examples"):
+            directory = root / relative
+            self.assertTrue((directory / ".gitkeep").is_file())
+            self.assertEqual(
+                [child.name for child in directory.iterdir() if child.name != ".gitkeep"],
+                [],
+            )
 
     def test_success_route_appends_then_promotes(self) -> None:
         temporary, root = self._temporary_seed()
