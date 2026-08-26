@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 import subprocess
@@ -27,6 +28,7 @@ def _load_module(name: str, path: Path):
 
 checks = _load_module("system_template_checks", ENGINE / "checks.py")
 tracer = _load_module("system_template_tracer", ENGINE / "tracer.py")
+audit = _load_module("system_template_audit", ENGINE / "audit_system.py")
 
 
 REPEATABILITY_CHILD = "SYSTEM_TEMPLATE_REPEATABILITY_CHILD"
@@ -64,6 +66,24 @@ class SystemTemplateTests(unittest.TestCase):
         )
         self._reset_operational_state(temp_root)
         return temporary, temp_root
+
+    def _auditable_seed(self):
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        tracer.trace_once(root, promote_example=True)
+        tracer.trace_once(root, simulate_failure=True)
+        tracer.trace_once(root, recover=True, promote_example=True)
+        return root
+
+    @staticmethod
+    def _tree_hash(root: Path) -> str:
+        digest = hashlib.sha256()
+        for path in sorted(root.rglob("*")):
+            if not path.is_file() or ".git" in path.parts or "__pycache__" in path.parts:
+                continue
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            digest.update(path.read_bytes())
+        return digest.hexdigest()
 
     @staticmethod
     def _reset_operational_state(root: Path) -> None:
@@ -203,6 +223,176 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(proof["evaluation_outcome"], "passed")
         example_proof = json.loads((result.example_path / "proof.json").read_text())
         self.assertTrue(example_proof["curated"])
+
+    def test_audit_passes_for_healthy_reference_without_mutation(self) -> None:
+        root = self._auditable_seed()
+        fixture = json.loads(
+            (root / "workspace/engine/fixtures/audit-system.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        before = self._tree_hash(root)
+
+        result = audit.audit_system(root, "both")
+
+        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual(result.scope, "both")
+        self.assertEqual(result.evidence_gaps, [])
+        self.assertEqual(result.next_action, "No action; keep the audit read-only.")
+        self.assertIn(
+            {"name": "healthy-reference", "scope": "both", "expected_status": "PASS"},
+            fixture["cases"],
+        )
+        self.assertTrue(any("failure and recovery" in item for item in result.evidence))
+
+    def test_audit_fails_for_stale_command_without_mutation(self) -> None:
+        root = self._auditable_seed()
+        readme = root / "README.md"
+        readme.write_text(
+            readme.read_text(encoding="utf-8")
+            + "\npython3 workspace/engine/missing_audit_command.py\n",
+            encoding="utf-8",
+        )
+        before = self._tree_hash(root)
+
+        result = audit.audit_system(root, "repository")
+
+        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual(result.evidence_gaps, [])
+        self.assertEqual(
+            result.next_action,
+            "Route the finding to the owning Build/Review lifecycle.",
+        )
+        self.assertTrue(any("missing_audit_command.py" in item for item in result.evidence))
+
+    def test_audit_fails_for_contradictory_curated_proof_without_mutation(self) -> None:
+        root = self._auditable_seed()
+        proof_path = root / "examples/demo-route/run-0001/proof.json"
+        proof = json.loads(proof_path.read_text(encoding="utf-8"))
+        proof["source_run_id"] = "run-0002"
+        proof_path.write_text(json.dumps(proof), encoding="utf-8")
+        before = self._tree_hash(root)
+
+        result = audit.audit_system(root, "demo-route")
+
+        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual(result.evidence_gaps, [])
+        self.assertTrue(any("does not cite a passing run" in item for item in result.evidence))
+
+    def test_audit_blocks_for_missing_workspace_evidence_without_mutation(self) -> None:
+        root = self._auditable_seed()
+        history = root / "workspace/history/runs.jsonl"
+        history.unlink()
+        before = self._tree_hash(root)
+
+        result = audit.audit_system(root, "demo-route")
+
+        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertEqual(result.evidence, [])
+        self.assertEqual(
+            result.next_action,
+            "Restore or provide the listed scoped evidence before rerunning.",
+        )
+        self.assertTrue(any("runs.jsonl" in item for item in result.evidence_gaps))
+
+    def test_repository_audit_does_not_read_workspace_scope(self) -> None:
+        root = self._auditable_seed()
+        (root / "workspace/history/runs.jsonl").unlink()
+        before = self._tree_hash(root)
+
+        result = audit.audit_system(root, "repository")
+
+        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual(result.scope, "repository")
+
+    def test_audit_blocks_for_missing_failure_or_recovery_evidence(self) -> None:
+        cases = (
+            ("failure", "workspace/runs/run-0002/failure.json", "run-0002"),
+            ("recovery", "workspace/runs/run-0003/recovery.json", "run-0003"),
+        )
+        for kind, relative, run_id in cases:
+            with self.subTest(kind=kind):
+                root = self._auditable_seed()
+                (root / relative).unlink()
+                before = self._tree_hash(root)
+
+                result = audit.audit_system(root, "demo-route")
+
+                self.assertEqual(self._tree_hash(root), before)
+                self.assertEqual(result.status, "BLOCKED")
+                self.assertEqual(result.evidence, [])
+                self.assertEqual(
+                    result.evidence_gaps,
+                    [f"required {kind} evidence is unavailable for {run_id}"],
+                )
+
+    def test_audit_fails_for_invalid_failure_or_recovery_evidence(self) -> None:
+        cases = (
+            ("failure", "escaping", "run-0002 has an escaping or invalid failure reference"),
+            ("failure", "malformed", "failure evidence for run-0002 is not readable JSON"),
+            ("failure", "contradictory", "failure evidence for run-0002 does not identify the eval failure"),
+            ("failure", "wrong-run", "failure evidence for run-0002 identifies a different run"),
+            ("failure", "wrong-eval", "failure evidence for run-0002 contradicts its evaluation reference"),
+            ("recovery", "escaping", "run-0003 has an escaping or invalid recovery reference"),
+            ("recovery", "malformed", "recovery evidence for run-0003 is not readable JSON"),
+            ("recovery", "contradictory", "recovery evidence for run-0003 contradicts its failed predecessor"),
+            ("recovery", "wrong-run", "recovery evidence for run-0003 identifies a different run"),
+            ("recovery", "wrong-status", "recovery evidence for run-0003 has an invalid status"),
+        )
+        for kind, problem, expected_error in cases:
+            with self.subTest(kind=kind, problem=problem):
+                root = self._auditable_seed()
+                history = root / "workspace/history/runs.jsonl"
+                records = [
+                    json.loads(line)
+                    for line in history.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                ]
+                record = next(
+                    item
+                    for item in records
+                    if item["run_id"] == ("run-0002" if kind == "failure" else "run-0003")
+                )
+                evidence_path = root / (
+                    "workspace/runs/run-0002/failure.json"
+                    if kind == "failure"
+                    else "workspace/runs/run-0003/recovery.json"
+                )
+
+                if problem == "escaping":
+                    record[kind]["ref"] = "workspace/history/runs.jsonl"
+                    history.write_text(
+                        "\n".join(json.dumps(item) for item in records) + "\n",
+                        encoding="utf-8",
+                    )
+                elif problem == "malformed":
+                    evidence_path.write_text("{", encoding="utf-8")
+                else:
+                    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+                    if problem == "wrong-run":
+                        evidence["run_id"] = "run-0001"
+                    elif problem == "wrong-eval":
+                        evidence["evaluation_ref"] = "workspace/runs/run-0002/other.json"
+                    elif problem == "wrong-status":
+                        evidence["status"] = "other"
+                    elif kind == "failure":
+                        evidence["code"] = "OTHER_FAILURE"
+                    else:
+                        evidence["from_run_id"] = "run-0001"
+                    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+                before = self._tree_hash(root)
+
+                result = audit.audit_system(root, "demo-route")
+
+                self.assertEqual(self._tree_hash(root), before)
+                self.assertEqual(result.status, "FAIL")
+                self.assertEqual(result.evidence_gaps, [])
+                self.assertTrue(any(expected_error in item for item in result.evidence))
 
     def test_second_run_inspects_predecessor_and_ledger_stays_append_only(self) -> None:
         temporary, root = self._temporary_seed()

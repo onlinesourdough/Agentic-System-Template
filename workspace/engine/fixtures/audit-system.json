@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "expected_status": "PASS",
+      "name": "healthy-reference",
+      "scope": "both"
+    },
+    {
+      "expected_status": "FAIL",
+      "mutation": "append a documented command whose local target is absent",
+      "name": "stale-command",
+      "scope": "repository"
+    },
+    {
+      "expected_status": "BLOCKED",
+      "mutation": "remove workspace/history/runs.jsonl from an isolated seed",
+      "name": "missing-workspace-evidence",
+      "scope": "demo-route"
+    },
+    {
+      "expected_status": "BLOCKED",
+      "mutation": "remove a retained failure or recovery artifact from an isolated seed",
+      "name": "missing-recovery-evidence",
+      "scope": "demo-route"
+    },
+    {
+      "expected_status": "FAIL",
+      "mutation": "make retained failure or recovery evidence escaping, malformed, or contradictory",
+      "name": "invalid-recovery-evidence",
+      "scope": "demo-route"
+    }
+  ],
+  "fixture": "system-template-audit-reference",
+  "read_only": true
+}

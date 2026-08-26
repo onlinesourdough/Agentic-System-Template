@@ -80,6 +80,30 @@ and its `output_ref` must agree with the ledger output reference. These local
 integrity checks keep the eval chain inspectable without imposing a general
 reference-validation framework.
 
+## Read-only accumulated-state audit
+
+`audit-system` is a separate route from per-run semantic eval and per-change
+Review. A semantic eval judges one output at one checkpoint; Review assesses a
+proposed change; the audit reads accumulated current System truth and proof for
+drift. Its explicit scope is `repository`, named `demo-route`, or `both`; it
+inspects only evidence relevant to that selected scope.
+
+The reference returns exactly `PASS`, `FAIL`, or `BLOCKED` with scope, concise
+evidence, evidence gaps, and the smallest next action. `BLOCKED` means required
+scoped evidence is unavailable, never an assumed pass. The audit is read-only:
+it creates no run, ledger record, example, repair, issue, or external action.
+Failures route to the owning Build/Review lifecycle, or to AIOS improvement
+triage when work originated there. It is a System Template-local reference,
+not a universal audit contract for other Systems. Downstream adoption remains
+an explicit decision for each owning System after this generic proof; this seed
+creates no speculative downstream copy.
+
+For `demo-route`, the audit treats failure and recovery as discoverable only
+when their referenced JSON objects stay inside the owning run directory, exist,
+and identify the failed run/eval failure or recovery run/failed predecessor
+consistently. Missing required artifacts are `BLOCKED`; escaping, malformed, or
+contradictory artifacts are `FAIL`.
+
 ## Promotion boundary
 
 `examples/` is not a scratch directory. Every example is a deliberately

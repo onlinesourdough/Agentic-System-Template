@@ -87,6 +87,33 @@ The structural checks resolve each eval reference inside its owning run and
 verify its JSON outcome and output reference agree with that run's ledger
 record, so the evidence chain cannot silently become dangling or contradictory.
 
+## Read-only System audit
+
+`audit-system` checks accumulated System drift. It is distinct from a per-run
+semantic eval (one output at one checkpoint) and per-change Review (whether a
+proposed change is ready): the audit reads whether the current repository,
+retained run family, and deliberate proof still agree after change has
+accumulated.
+
+For the named run-family scope, discoverability means more than ledger
+pointers: a failed run's `failure.json` and a recovery run's `recovery.json`
+must remain inside their owning run, readable, and consistent with the failed
+run, eval, and recovery relation.
+
+Select scope explicitly. This reference supports `repository`, named
+`demo-route`, or `both`:
+
+```sh
+python3 workspace/engine/audit_system.py --scope both
+```
+
+It returns one JSON object with exactly `PASS`, `FAIL`, or `BLOCKED`, its
+scope, concise evidence, evidence gaps, and the smallest next action. It is
+read-only: it creates no run, ledger entry, example, repair, issue, or external
+action. A finding routes to the owning Build/Review lifecycle, or to AIOS
+improvement triage when work originated there. The local reference is not a
+universal domain rubric; each concrete System owns its own audit criteria.
+
 The data model also has explicit recovery evidence. To exercise it:
 
 ```sh
@@ -116,6 +143,7 @@ Run the structural and stale-path checks, then the dependency-light tests:
 ```sh
 python3 workspace/engine/checks.py
 python3 -m unittest discover -s workspace/engine/tests -p 'test_*.py'
+python3 workspace/engine/audit_system.py --scope both
 ```
 
 The checks enforce the three visible roots, required shell and tracer paths,

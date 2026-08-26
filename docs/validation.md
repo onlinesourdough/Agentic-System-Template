@@ -8,6 +8,7 @@ From the repository root, run the checks and tests:
 ```sh
 python3 workspace/engine/checks.py
 python3 -m unittest discover -s workspace/engine/tests -p 'test_*.py'
+python3 workspace/engine/audit_system.py --scope both
 ```
 
 The passing tracer proof can then be produced with:
@@ -32,6 +33,13 @@ validation; no AIOS service, model, database, or external package is needed.
 The structural checks also reject missing, malformed, escaping, or
 ledger-contradictory eval evidence.
 
+The audit tests create isolated fixtures for a healthy PASS, a stale documented
+command FAIL, and missing workspace evidence BLOCKED. They snapshot the seed
+before and after each audit to prove the audit has no mutation path; the live
+audit command above does not append another run.
+The same isolated tests cover missing, escaping, malformed, and contradictory
+failure/recovery artifacts, so discoverability is not merely ledger-deep.
+
 For an independent checkout, clone the committed repository into a new
 temporary directory and repeat both validations plus the tracer. A local
 clone is sufficient and does not contact the configured remote:
@@ -45,7 +53,8 @@ git clone --no-local "$(pwd)" "$clone_parent/System-template"
   python3 -m unittest discover -s workspace/engine/tests -p 'test_*.py' &&
   python3 workspace/engine/tracer.py --promote-example &&
   python3 workspace/engine/tracer.py --simulate-failure &&
-  python3 workspace/engine/tracer.py --recover --promote-example
+  python3 workspace/engine/tracer.py --recover --promote-example &&
+  python3 workspace/engine/audit_system.py --scope both
 )
 ```
 

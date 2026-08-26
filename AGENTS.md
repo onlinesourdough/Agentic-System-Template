@@ -28,6 +28,10 @@ small System-local semantic eval. It records structured input/output/eval/proof
 references and failure or recovery evidence. It appends one ledger record and
 promotes an example only when that promotion is intentional and successful.
 
+`audit-system` is a separate, read-only accumulated-state route. It selects an
+explicit repository, named run-family, or combined scope; it never creates a
+run, ledger entry, example, repair, or external action.
+
 Inputs are references rather than prompt transcripts. The ledger is plain
 JSON Lines and contains no credentials, database, cross-System log, shared
 package, or dependency on an AIOS runtime. This repository is a seed and
