@@ -1,0 +1,16 @@
+{
+  "assertions": [
+    "the primary skill inspected a prior semantic-eval failure",
+    "the replay used the corrected local result and passed the local semantic eval",
+    "recovery evidence points to the failed predecessor"
+  ],
+  "curated": true,
+  "evaluation_outcome": "passed",
+  "example": "demo-route",
+  "result": "The primary System demo route completed deterministically.",
+  "route": "demo",
+  "source_evaluation_ref": "workspace/runs/run-0003/evaluation.json",
+  "source_proof_ref": "workspace/runs/run-0003/proof.json",
+  "source_run_id": "run-0003",
+  "status": "succeeded"
+}

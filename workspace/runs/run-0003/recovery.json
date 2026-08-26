@@ -1,0 +1,7 @@
+{
+  "action": "replay the local semantic-eval case with the corrected demo output",
+  "correction": "use the required demo completion result",
+  "from_run_id": "run-0002",
+  "run_id": "run-0003",
+  "status": "recovered"
+}

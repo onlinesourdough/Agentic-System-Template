@@ -23,9 +23,10 @@ Examples are added only as deliberately curated, standalone proof.
 ## Primary skill behavior
 
 The one primary System skill first inspects relevant prior runs, then executes
-or routes the work. It records structured input/output/proof references and
-failure or recovery evidence. It appends one ledger record and promotes an
-example only when that promotion is intentional.
+or routes the work. The route keeps deterministic validation separate from its
+small System-local semantic eval. It records structured input/output/eval/proof
+references and failure or recovery evidence. It appends one ledger record and
+promotes an example only when that promotion is intentional and successful.
 
 Inputs are references rather than prompt transcripts. The ledger is plain
 JSON Lines and contains no credentials, database, cross-System log, shared

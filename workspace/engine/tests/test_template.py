@@ -46,6 +46,14 @@ class SystemTemplateTests(unittest.TestCase):
 
         self.assertIn("required path is missing: workspace/README.md", errors)
 
+    def test_public_boundary_requires_several_needed_responsibilities(self) -> None:
+        for relative in ("README.md", "docs/contract.md"):
+            text = (ROOT / relative).read_text(encoding="utf-8")
+            normalized = " ".join(text.split())
+            self.assertIn("several responsibilities", normalized)
+            self.assertIn("not an all-fields", normalized)
+            self.assertIn("long Skill", normalized)
+
     def _temporary_seed(self, source_root: Path = ROOT):
         temporary = tempfile.TemporaryDirectory()
         temp_root = Path(temporary.name) / "seed"
@@ -177,6 +185,7 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(result.previous_run_id, None)
         self.assertEqual(result.previous_run_relation, None)
         self.assertTrue(result.output_path.is_file())
+        self.assertTrue(result.evaluation_path.is_file())
         self.assertTrue(result.proof_path.is_file())
         self.assertTrue(result.example_path is not None and result.example_path.is_dir())
         self.assertEqual(checks.check_structure(root), [])
@@ -188,8 +197,10 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(record["status"], "succeeded")
         self.assertIsNone(record["failure"])
         self.assertIsNone(record["recovery"])
+        self.assertEqual(record["evaluation"]["outcome"], "passed")
         proof = json.loads(result.proof_path.read_text())
         self.assertEqual(proof["curated_example_ref"], "examples/demo-route/run-0001/")
+        self.assertEqual(proof["evaluation_outcome"], "passed")
         example_proof = json.loads((result.example_path / "proof.json").read_text())
         self.assertTrue(example_proof["curated"])
 
@@ -248,6 +259,144 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(records[1]["previous_run_relation"], "predecessor")
         self.assertEqual(records[2]["previous_run_relation"], "recovery")
         self.assertEqual(checks.check_structure(root), [])
+
+    def test_semantic_failure_is_structurally_valid_retained_and_replayed(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        fixture_path = root / tracer.SEMANTIC_FAILURE_FIXTURE_REF
+        fixture_before = fixture_path.read_text(encoding="utf-8")
+        fixture = json.loads(fixture_before)
+
+        self.assertEqual(tracer.validate_output_structure(fixture), [])
+        failed = tracer.trace_once(root, simulate_failure=True)
+        failed_output = json.loads(failed.output_path.read_text(encoding="utf-8"))
+        failed_evaluation = json.loads(
+            failed.evaluation_path.read_text(encoding="utf-8")
+        )
+
+        self.assertEqual(failed.status, "failed")
+        self.assertEqual(failed_output["status"], "succeeded")
+        self.assertEqual(failed_evaluation["outcome"], "failed")
+        self.assertTrue(failed_evaluation["observable_checks"][0]["passed"])
+        self.assertFalse(failed_evaluation["observable_checks"][-1]["passed"])
+        self.assertEqual(fixture_path.read_text(encoding="utf-8"), fixture_before)
+        self.assertFalse((root / "examples" / "demo-route" / failed.run_id).exists())
+
+        replay = tracer.trace_once(root, recover=True, promote_example=True)
+        replay_evaluation = json.loads(
+            replay.evaluation_path.read_text(encoding="utf-8")
+        )
+        recovery = json.loads(replay.recovery_path.read_text(encoding="utf-8"))
+        records = [
+            json.loads(line)
+            for line in (root / "workspace/history/runs.jsonl").read_text().splitlines()
+            if line.strip()
+        ]
+
+        self.assertEqual(replay.status, "succeeded")
+        self.assertEqual(replay.previous_run_id, failed.run_id)
+        self.assertEqual(replay.previous_run_relation, "recovery")
+        self.assertEqual(replay_evaluation["outcome"], "passed")
+        self.assertEqual(recovery["from_run_id"], failed.run_id)
+        self.assertIn("corrected", recovery["action"])
+        self.assertEqual(records[0]["evaluation"]["outcome"], "failed")
+        self.assertEqual(records[1]["evaluation"]["outcome"], "passed")
+        self.assertEqual(records[1]["recovery"]["from_run_id"], failed.run_id)
+        self.assertEqual(checks.check_structure(root), [])
+
+    def test_semantic_failure_cannot_be_promoted(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+
+        with self.assertRaisesRegex(tracer.TraceError, "cannot be promoted"):
+            tracer.trace_once(root, simulate_failure=True, promote_example=True)
+
+        self.assertFalse((root / "workspace/runs/run-0001").exists())
+        self.assertEqual(
+            (root / "workspace/history/runs.jsonl").read_text(encoding="utf-8"),
+            "",
+        )
+
+    def test_evaluation_evidence_must_be_present_local_and_consistent(self) -> None:
+        cases = (
+            ("missing", "evaluation evidence is missing"),
+            ("malformed", "evaluation evidence is not valid JSON"),
+            ("non_object", "evaluation evidence must be an object"),
+            ("escaping", "evaluation reference escapes its owning run"),
+            ("outcome", "evaluation evidence outcome disagrees"),
+            ("output", "evaluation output reference disagrees"),
+        )
+        for case, expected_error in cases:
+            with self.subTest(case=case):
+                temporary, root = self._temporary_seed()
+                self.addCleanup(temporary.cleanup)
+                result = tracer.trace_once(root)
+                history = root / "workspace/history/runs.jsonl"
+                record = json.loads(history.read_text(encoding="utf-8"))
+
+                if case == "missing":
+                    result.evaluation_path.unlink()
+                elif case == "malformed":
+                    result.evaluation_path.write_text("{", encoding="utf-8")
+                elif case == "non_object":
+                    result.evaluation_path.write_text("[]", encoding="utf-8")
+                elif case == "escaping":
+                    record["evaluation"]["ref"] = "workspace/history/runs.jsonl"
+                elif case == "outcome":
+                    evaluation = json.loads(
+                        result.evaluation_path.read_text(encoding="utf-8")
+                    )
+                    evaluation["outcome"] = "failed"
+                    result.evaluation_path.write_text(
+                        json.dumps(evaluation), encoding="utf-8"
+                    )
+                else:
+                    evaluation = json.loads(
+                        result.evaluation_path.read_text(encoding="utf-8")
+                    )
+                    evaluation["output_ref"] = "workspace/runs/run-0001/other.json"
+                    result.evaluation_path.write_text(
+                        json.dumps(evaluation), encoding="utf-8"
+                    )
+
+                history.write_text(json.dumps(record) + "\n", encoding="utf-8")
+                errors = checks.check_structure(root)
+                self.assertTrue(
+                    any(expected_error in error for error in errors), errors
+                )
+
+    def test_evaluation_outcomes_must_match_run_status(self) -> None:
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        tracer.trace_once(root)
+        history = root / "workspace/history/runs.jsonl"
+        record = json.loads(history.read_text(encoding="utf-8"))
+        record["status"] = "failed"
+        record["failure"] = {"code": "TEST", "ref": "test"}
+        history.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        errors = checks.check_structure(root)
+
+        self.assertTrue(
+            any("passed evaluation for a non-succeeded run" in error for error in errors),
+            errors,
+        )
+
+        temporary, root = self._temporary_seed()
+        self.addCleanup(temporary.cleanup)
+        tracer.trace_once(root, simulate_failure=True)
+        history = root / "workspace/history/runs.jsonl"
+        record = json.loads(history.read_text(encoding="utf-8"))
+        record["status"] = "succeeded"
+        record["failure"] = None
+        history.write_text(json.dumps(record) + "\n", encoding="utf-8")
+
+        errors = checks.check_structure(root)
+
+        self.assertTrue(
+            any("failed evaluation for a non-failed run" in error for error in errors),
+            errors,
+        )
 
     def test_recovery_is_single_use_per_failed_run(self) -> None:
         temporary, root = self._temporary_seed()

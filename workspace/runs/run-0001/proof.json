@@ -1,0 +1,19 @@
+{
+  "assertions": [
+    "the primary skill selected the demo route",
+    "deterministic validation and the separate local semantic eval passed",
+    "output and proof were written under workspace/runs and one ledger record was appended"
+  ],
+  "curated_example_ref": "examples/demo-route/run-0001/",
+  "evaluation_outcome": "passed",
+  "evaluation_ref": "workspace/runs/run-0001/evaluation.json",
+  "failure_ref": null,
+  "input_ref": "fixture://system-template/demo-route",
+  "ledger_ref": "workspace/history/runs.jsonl#run-0001",
+  "previous_run_id": null,
+  "previous_run_relation": null,
+  "proof_ref": "workspace/runs/run-0001/proof.json",
+  "recovery_ref": null,
+  "run_id": "run-0001",
+  "status": "succeeded"
+}

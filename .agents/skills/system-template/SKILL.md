@@ -15,20 +15,22 @@ proof into `examples/` only by deliberate choice.
    route and input reference to identify the previous run; do not copy raw
    request text into a record.
 2. Execute or route the work. The reference route is the deterministic `demo`
-   handler in `workspace/engine/tracer.py`.
-3. Create `workspace/runs/<run-id>/` and write structured input, output, and
-   proof files. A failure writes failure evidence in that same run directory.
+   handler in `workspace/engine/tracer.py`; it runs its local semantic eval as
+   separate evidence after deterministic output validation.
+3. Create `workspace/runs/<run-id>/` and write structured input, output, eval,
+   and proof files. A failed eval preserves the output and writes failure
+   evidence in that same run directory.
 4. Append one JSON object to `workspace/history/runs.jsonl`. Each record keeps
-   the run ID, timestamps, status, input/output/proof references, previous-run
-   relation, and failure/recovery references. Use `null` for the first
+   the run ID, timestamps, status, input/output/eval/proof references,
+   previous-run relation, and failure/recovery references. Use `null` for the first
    relevant run, `predecessor` for ordinary continuation, and `recovery` for
    an explicit recovery route.
 5. If a recovery is needed, create one new run that points to an unresolved
    failed run and writes a recovery evidence file. Do not rewrite the failed
    record or recover the same failed run twice.
-6. Promote an example only when the caller explicitly requests it. A promoted
-   example must include its own `README.md` and `proof.json`, and must remain
-   understandable without importing this repository.
+6. Promote a passing example only when the caller explicitly requests it. A
+   promoted example must include its own `README.md` and `proof.json`, and must
+   remain understandable without importing this repository.
 
 ## Reference command
 
@@ -38,13 +40,16 @@ From the repository root:
 python3 workspace/engine/tracer.py --promote-example
 ```
 
-Failure and recovery can be demonstrated with:
+The retained semantic-failure and correction/replay path can be demonstrated
+with:
 
 ```sh
 python3 workspace/engine/tracer.py --simulate-failure
 python3 workspace/engine/tracer.py --recover --promote-example
 ```
 
-The tracer is a reference implementation of this skill, not a service that
-the seed must be installed into. Keep new System-specific behavior in the
-System's own workspace and keep this public shell generic.
+The tracer, its local fixture, and its evidence contract are the technical
+truth; this skill is only the concise route into them. The tracer is a
+reference implementation, not a service that the seed must be installed into.
+Keep new System-specific behavior in the System's own workspace and keep this
+public shell generic.

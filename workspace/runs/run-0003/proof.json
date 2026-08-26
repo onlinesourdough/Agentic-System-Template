@@ -1,0 +1,19 @@
+{
+  "assertions": [
+    "the primary skill inspected a prior semantic-eval failure",
+    "the replay used the corrected local result and passed the local semantic eval",
+    "recovery evidence points to the failed predecessor"
+  ],
+  "curated_example_ref": "examples/demo-route/run-0003/",
+  "evaluation_outcome": "passed",
+  "evaluation_ref": "workspace/runs/run-0003/evaluation.json",
+  "failure_ref": null,
+  "input_ref": "fixture://system-template/demo-route",
+  "ledger_ref": "workspace/history/runs.jsonl#run-0003",
+  "previous_run_id": "run-0002",
+  "previous_run_relation": "recovery",
+  "proof_ref": "workspace/runs/run-0003/proof.json",
+  "recovery_ref": "workspace/runs/run-0003/recovery.json",
+  "run_id": "run-0003",
+  "status": "succeeded"
+}

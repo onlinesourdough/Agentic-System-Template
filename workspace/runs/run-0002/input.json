@@ -1,0 +1,6 @@
+{
+  "fixture_ref": "workspace/engine/fixtures/semantic-wrong-output.json",
+  "input_ref": "fixture://system-template/demo-route",
+  "request_kind": "semantic-eval-replay",
+  "route": "demo"
+}

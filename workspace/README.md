@@ -8,5 +8,10 @@
 - `engine/` contains only the optional technical implementation of this
   filesystem reference.
 
+Each traced run can include `output.json`, a separate `evaluation.json`, and
+proof or failure/recovery evidence. The local evaluator belongs to this
+System's route; it is not a general service or a requirement for other
+Systems.
+
 This is a filesystem arrangement for the System Template, not an additional
 AIOS concept or a service that another System must install.

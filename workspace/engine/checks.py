@@ -39,13 +39,20 @@ REQUIRED_PATHS = (
     "workspace/history/runs.jsonl",
     "workspace/learning",
     "workspace/engine/tracer.py",
+    "workspace/engine/fixtures/semantic-wrong-output.json",
     "workspace/engine/checks.py",
     "workspace/engine/tests/test_template.py",
     "docs/contract.md",
     "docs/validation.md",
 )
 STALE_ROOT_NAMES = {"engine", "scripts", "tests"}
-CURATED_EXAMPLE_FIELDS = {"curated", "example", "source_run_id", "status"}
+CURATED_EXAMPLE_FIELDS = {
+    "curated",
+    "evaluation_outcome",
+    "example",
+    "source_run_id",
+    "status",
+}
 LEDGER_FIELDS = {
     "run_id",
     "started_at",
@@ -54,6 +61,7 @@ LEDGER_FIELDS = {
     "input_ref",
     "output_ref",
     "proof_ref",
+    "evaluation",
     "previous_run_id",
     "previous_run_relation",
     "failure",
@@ -202,6 +210,81 @@ def _check_example_tree(directory: Path, errors: List[str]) -> bool:
     return found_leaf
 
 
+def _check_evaluation_evidence(
+    record: Dict[str, object],
+    line_number: int,
+    root: Path,
+    run_id: str,
+    evaluation: Dict[str, object],
+    errors: List[str],
+) -> None:
+    """Validate the one local eval reference that makes a run inspectable."""
+
+    outcome = evaluation.get("outcome")
+    if outcome == "passed" and record.get("status") != "succeeded":
+        errors.append(
+            f"ledger line {line_number} has a passed evaluation for a non-succeeded run"
+        )
+    elif outcome == "failed" and record.get("status") != "failed":
+        errors.append(
+            f"ledger line {line_number} has a failed evaluation for a non-failed run"
+        )
+
+    reference = evaluation.get("ref")
+    if not isinstance(reference, str) or not reference:
+        return
+
+    runs_root = (root / "workspace" / "runs").resolve()
+    owning_run = (runs_root / run_id).resolve()
+    try:
+        owning_run.relative_to(runs_root)
+    except ValueError:
+        errors.append(f"ledger line {line_number} has an invalid owning run directory")
+        return
+
+    evidence_path = (root / reference).resolve()
+    try:
+        evidence_path.relative_to(owning_run)
+    except ValueError:
+        errors.append(
+            f"ledger line {line_number} evaluation reference escapes its owning run"
+        )
+        return
+    if not evidence_path.is_file():
+        errors.append(
+            f"ledger line {line_number} evaluation evidence is missing: {reference}"
+        )
+        return
+
+    try:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        errors.append(
+            f"ledger line {line_number} evaluation evidence is not valid JSON: {exc}"
+        )
+        return
+    if not isinstance(evidence, dict):
+        errors.append(f"ledger line {line_number} evaluation evidence must be an object")
+        return
+    if evidence.get("outcome") != outcome:
+        errors.append(
+            f"ledger line {line_number} evaluation evidence outcome disagrees with the ledger"
+        )
+    evidence_outcome = evidence.get("outcome")
+    if evidence_outcome == "passed" and record.get("status") != "succeeded":
+        errors.append(
+            f"ledger line {line_number} passed evaluation evidence targets a non-succeeded run"
+        )
+    elif evidence_outcome == "failed" and record.get("status") != "failed":
+        errors.append(
+            f"ledger line {line_number} failed evaluation evidence targets a non-failed run"
+        )
+    if evidence.get("output_ref") != record.get("output_ref"):
+        errors.append(
+            f"ledger line {line_number} evaluation output reference disagrees with the ledger"
+        )
+
+
 def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
     """Validate the small append-only ledger without imposing a framework."""
 
@@ -289,6 +372,18 @@ def _check_ledger(path: Path, root: Path, errors: List[str]) -> None:
                 recovered[from_id] = line_number
             if not isinstance(recovery.get("ref"), str) or not recovery.get("ref"):
                 errors.append(f"ledger line {line_number} lacks a recovery reference")
+
+        evaluation = record.get("evaluation")
+        if not isinstance(evaluation, dict):
+            errors.append(f"ledger line {line_number} has invalid evaluation evidence")
+        elif evaluation.get("outcome") not in {"passed", "failed"}:
+            errors.append(f"ledger line {line_number} has an invalid evaluation outcome")
+        elif not isinstance(evaluation.get("ref"), str) or not evaluation.get("ref"):
+            errors.append(f"ledger line {line_number} lacks an evaluation reference")
+        else:
+            _check_evaluation_evidence(
+                record, line_number, root, run_id, evaluation, errors
+            )
 
         if record.get("status") == "failed" and record.get("failure") is None:
             errors.append(f"ledger line {line_number} failed without failure evidence")

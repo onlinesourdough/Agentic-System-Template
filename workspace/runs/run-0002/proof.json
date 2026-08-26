@@ -1,0 +1,19 @@
+{
+  "assertions": [
+    "the output passed local structural validation",
+    "the local semantic eval rejected the irrelevant completion claim without editing it",
+    "the failed run remained available for a later recovery replay"
+  ],
+  "curated_example_ref": null,
+  "evaluation_outcome": "failed",
+  "evaluation_ref": "workspace/runs/run-0002/evaluation.json",
+  "failure_ref": "workspace/runs/run-0002/failure.json",
+  "input_ref": "fixture://system-template/demo-route",
+  "ledger_ref": "workspace/history/runs.jsonl#run-0002",
+  "previous_run_id": "run-0001",
+  "previous_run_relation": "predecessor",
+  "proof_ref": "workspace/runs/run-0002/proof.json",
+  "recovery_ref": null,
+  "run_id": "run-0002",
+  "status": "failed"
+}

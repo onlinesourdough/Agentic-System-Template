@@ -35,10 +35,27 @@ The root shell is `AGENTS.md`, this file, and the primary System skill at
 minimal. The repository is a reference that can be copied or studied; another
 system does not need to install or import it to run.
 
-The ledger records a run ID, timestamps, status, input/output/proof
+The ledger records a run ID, timestamps, status, input/output/eval/proof
 references, the relevant previous run, and failure or recovery evidence. It
 does not store raw input text. A run directory is the durable evidence surface;
 the ledger points to it rather than becoming a second data store.
+
+## System and Skill boundary
+
+Use a Skill when the reusable value is an instruction or method with clear
+inputs, steps, proof, and stop conditions, but no independent operational
+responsibility. A long Skill, supporting scripts, and references do not by
+themselves make a System.
+
+Use a System when one reusable capability must remain independently operable
+across runs and outcomes and materially owns several responsibilities it needs
+as one cohesive operational responsibility. Relevant evidence can include
+executable tooling, workspace state, run relations, local contracts and
+validation, domain-specific review, evidence, and failure/replay handling.
+That list is not an all-fields checklist: a System owns the several concerns
+its independent operation materially requires. The primary skill is the
+concise agent-facing route into that capability; it does not copy the engine,
+ledger, contracts, or technical documentation into its instructions.
 
 ## Deterministic tracer
 
@@ -61,6 +78,15 @@ creates `examples/demo-route/<run-id>/` as an explicit standalone proof.
 The default demonstration timestamp is fixed; `--timestamp` can supply an
 ISO-8601 UTC value for another deterministic fixture.
 
+Each route first validates its small local output shape, then records a
+separate System-local semantic eval in `evaluation.json`. That eval checks only
+this demo route's required completion claim; it is neither a general judge nor
+a portable rubric. Its evidence names the subject, checkpoint, observable
+checks, required evidence, and failure action.
+The structural checks resolve each eval reference inside its owning run and
+verify its JSON outcome and output reference agree with that run's ledger
+record, so the evidence chain cannot silently become dangling or contradictory.
+
 The data model also has explicit recovery evidence. To exercise it:
 
 ```sh
@@ -68,9 +94,17 @@ python3 workspace/engine/tracer.py --simulate-failure
 python3 workspace/engine/tracer.py --recover --promote-example
 ```
 
-The failed run remains in the ledger, and one recovery run points back to its
-unresolved failed predecessor. A second recovery attempt fails until another
-failure is recorded.
+`--simulate-failure` selects a fixture that is structurally valid but carries
+an irrelevant result. The evaluator records a failed outcome without editing
+that output; the failed run is retained and never promoted. `--recover` adds a
+new run that points back to the unresolved failed predecessor, records the
+correction/replay, and passes the eval. A second recovery attempt fails until
+another failure is recorded.
+
+For real Systems, retain relevant failures as owner-local regression or eval
+cases before changing an affected model, prompt, tool, contract, or harness.
+This authoring procedure is intentionally only a local seed pattern today; it
+is not promoted as a portable Global Skill.
 No orchestration service, database, or external package is needed.
 
 ## Checks and prerequisites
