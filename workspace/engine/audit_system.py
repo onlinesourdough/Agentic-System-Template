@@ -6,11 +6,20 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+from urllib.parse import urlsplit
+
+
+# Running the audit CLI must not create Python cache files in the repository it
+# is proving read-only.
+sys.dont_write_bytecode = True
 
 
 AUDIT_SCOPES = ("repository", "demo-route", "both")
@@ -26,6 +35,10 @@ REPOSITORY_EVIDENCE = (
     "workspace/engine/checks.py",
     "workspace/engine/audit_system.py",
 )
+
+
+class GitAuditGap(RuntimeError):
+    """Required Git evidence could not be proven without mutation."""
 
 
 @dataclass(frozen=True)
@@ -52,6 +65,81 @@ def repository_root() -> Path:
     """Return the repository root derived from this file, not the cwd."""
 
     return Path(__file__).resolve().parents[2]
+
+
+def _git_process(
+    arguments: Sequence[str], cwd: Optional[Path]
+) -> subprocess.CompletedProcess[str]:
+    """Run one bounded, non-interactive Git read for the reference CLI."""
+
+    environment = os.environ.copy()
+    environment["GIT_OPTIONAL_LOCKS"] = "0"
+    environment["GIT_TERMINAL_PROMPT"] = "0"
+    environment["GCM_INTERACTIVE"] = "Never"
+    return subprocess.run(
+        ["git", *arguments],
+        cwd=cwd,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+
+def _git(
+    arguments: Sequence[str], cwd: Optional[Path], label: str
+) -> str:
+    try:
+        result = _git_process(arguments, cwd)
+    except (OSError, subprocess.SubprocessError):
+        raise GitAuditGap(f"{label} is unavailable") from None
+    if result.returncode != 0:
+        raise GitAuditGap(f"{label} is unavailable")
+    return result.stdout.strip()
+
+
+def _credential_free_remote(remote_url: str) -> str:
+    """Validate an exact remote identity before returning it as evidence."""
+
+    if not remote_url or any(character in remote_url for character in "\r\n\0"):
+        raise GitAuditGap("remote identity is missing or malformed")
+    if "://" in remote_url:
+        try:
+            parsed = urlsplit(remote_url)
+            parsed.port
+        except ValueError:
+            raise GitAuditGap("remote identity is malformed") from None
+        if parsed.password is not None or parsed.query or parsed.fragment:
+            raise GitAuditGap("remote identity is not credential-free")
+        if parsed.username is not None and parsed.scheme != "ssh":
+            raise GitAuditGap("remote identity is not credential-free")
+    return remote_url
+
+
+def _live_relation(temporary_git: Path, local_oid: str, live_oid: str) -> str:
+    counts = _git(
+        (
+            "--git-dir",
+            str(temporary_git),
+            "rev-list",
+            "--left-right",
+            "--count",
+            f"{local_oid}...{live_oid}",
+        ),
+        None,
+        "local/live commit ancestry relation",
+    ).split()
+    if len(counts) != 2 or not all(value.isdigit() for value in counts):
+        raise GitAuditGap("local/live commit ancestry relation is unavailable")
+    local_only, live_only = map(int, counts)
+    if local_only == live_only == 0:
+        return "equal"
+    if local_only == 0:
+        return "behind"
+    if live_only == 0:
+        return "ahead"
+    return "diverged"
 
 
 def _load_checks(root: Path):
@@ -118,7 +206,191 @@ def _result(status: str, scope: str, evidence: Iterable[str], gaps: Iterable[str
     return AuditResult(status, scope, list(evidence), list(gaps), next_action)
 
 
-def _repository_audit(root: Path, findings: List[str], gaps: List[str]) -> List[str]:
+def _config_one(root: Path, key: str) -> str:
+    values = _git(
+        ("config", "--get-all", key), root, f"Git configuration {key}"
+    ).splitlines()
+    if len(values) != 1:
+        raise GitAuditGap(f"Git configuration {key} is missing or ambiguous")
+    return values[0]
+
+
+def _repository_git_audit(
+    root: Path,
+    findings: List[str],
+    gaps: List[str],
+) -> List[str]:
+    """Prove a clean checkout's exact relation to a freshly read upstream."""
+
+    evidence: List[str] = []
+    try:
+        git_root = Path(
+            _git(
+                ("rev-parse", "--path-format=absolute", "--show-toplevel"),
+                root,
+                "exact Git root",
+            )
+        ).resolve()
+        if git_root != root:
+            raise GitAuditGap(
+                f"exact Git root is ambiguous: expected {root}, observed {git_root}"
+            )
+        evidence.append(f"exact Git root: {git_root}")
+
+        status = _git(
+            ("status", "--porcelain=v2", "--untracked-files=all"),
+            root,
+            "complete worktree/index state",
+        )
+        if status:
+            findings.append(
+                "worktree/index is not clean: complete staged, unstaged, and "
+                f"untracked scan found {len(status.splitlines())} entries"
+            )
+        else:
+            evidence.append(
+                "worktree/index state: clean across staged, unstaged, and untracked files"
+            )
+
+        branch = _git(
+            ("symbolic-ref", "--quiet", "--short", "HEAD"),
+            root,
+            "current branch (detached or missing)",
+        )
+        remote = _config_one(root, f"branch.{branch}.remote")
+        merge_ref = _config_one(root, f"branch.{branch}.merge")
+        if remote == "." or not merge_ref.startswith("refs/heads/"):
+            raise GitAuditGap("branch upstream is missing or ambiguous")
+        upstream_branch = merge_ref.removeprefix("refs/heads/")
+        if branch != upstream_branch:
+            raise GitAuditGap(
+                f"current branch is unexpected: {branch} tracks {remote}/{upstream_branch}"
+            )
+        upstream_ref = f"refs/remotes/{remote}/{upstream_branch}"
+        observed_upstream = _git(
+            ("rev-parse", "--symbolic-full-name", "@{upstream}"),
+            root,
+            "configured branch upstream",
+        )
+        if observed_upstream != upstream_ref:
+            raise GitAuditGap("configured branch upstream is ambiguous")
+        evidence.append(f"branch/upstream: {branch} -> {remote}/{upstream_branch}")
+
+        fetch_urls = _git(
+            ("remote", "get-url", "--all", remote),
+            root,
+            "remote fetch access",
+        ).splitlines()
+        push_urls = _git(
+            ("remote", "get-url", "--push", "--all", remote),
+            root,
+            "remote push identity",
+        ).splitlines()
+        if len(fetch_urls) != 1 or len(push_urls) != 1:
+            raise GitAuditGap("remote identity is missing or ambiguous")
+        fetch_url = _credential_free_remote(fetch_urls[0])
+        push_url = _credential_free_remote(push_urls[0])
+        evidence.append(
+            f"credential-free remote identity: fetch={fetch_url} push={push_url}"
+        )
+
+        local_oid = _git(
+            ("rev-parse", "--verify", "HEAD^{commit}"),
+            root,
+            "local HEAD commit object",
+        )
+        try:
+            cached_oid = _git(
+                ("rev-parse", "--verify", "@{upstream}^{commit}"),
+                root,
+                "cached tracking commit object",
+            )
+        except GitAuditGap:
+            cached_oid = "unavailable"
+
+        with tempfile.TemporaryDirectory(prefix="system-template-audit-") as temporary:
+            temporary_git = Path(temporary) / "live.git"
+            _git(
+                ("init", "--bare", "--quiet", str(temporary_git)),
+                root,
+                "ephemeral live-proof repository",
+            )
+            _git(
+                (
+                    "--git-dir",
+                    str(temporary_git),
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    "--",
+                    fetch_url,
+                    f"{merge_ref}:refs/audit/live",
+                ),
+                root,
+                "fresh live upstream object",
+            )
+            _git(
+                (
+                    "--git-dir",
+                    str(temporary_git),
+                    "fetch",
+                    "--quiet",
+                    "--no-tags",
+                    "--no-write-fetch-head",
+                    "--",
+                    str(root),
+                    f"refs/heads/{branch}:refs/audit/local",
+                ),
+                root,
+                "local object graph",
+            )
+            live_oid = _git(
+                ("--git-dir", str(temporary_git), "rev-parse", "refs/audit/live^{commit}"),
+                None,
+                "fresh live commit object",
+            )
+            fetched_local_oid = _git(
+                ("--git-dir", str(temporary_git), "rev-parse", "refs/audit/local^{commit}"),
+                None,
+                "fetched local commit object",
+            )
+            if fetched_local_oid != local_oid:
+                raise GitAuditGap(
+                    "local branch changed while currentness was being proven"
+                )
+            relation = _live_relation(temporary_git, local_oid, live_oid)
+        if _git(
+            ("rev-parse", "--verify", "HEAD^{commit}"), root, "local HEAD commit object"
+        ) != local_oid or _git(
+            ("status", "--porcelain=v2", "--untracked-files=all"),
+            root,
+            "complete worktree/index state",
+        ) != status:
+            raise GitAuditGap("repository changed while currentness was being proven")
+    except (GitAuditGap, OSError) as exc:
+        gaps.append(
+            str(exc)
+            if isinstance(exc, GitAuditGap)
+            else "ephemeral live-proof repository is unavailable"
+        )
+        return evidence
+
+    evidence.append(
+        "fresh live upstream proof: "
+        f"local={local_oid} cached_tracking={cached_oid} live={live_oid} "
+        f"relation={relation}"
+    )
+    if relation != "equal":
+        findings.append(f"local/live upstream relation is {relation}, not equal")
+    return evidence
+
+
+def _repository_audit(
+    root: Path,
+    findings: List[str],
+    gaps: List[str],
+) -> List[str]:
     evidence: List[str] = []
     for relative in REPOSITORY_EVIDENCE:
         if not (root / relative).is_file():
@@ -132,6 +404,7 @@ def _repository_audit(root: Path, findings: List[str], gaps: List[str]) -> List[
             if not (root / command).is_file():
                 findings.append(f"documented command target is unavailable: {command}")
     evidence.append("repository shell and documented local command targets were read")
+    evidence.extend(_repository_git_audit(root, findings, gaps))
     return evidence
 
 
@@ -284,7 +557,7 @@ def audit_system(root: Path, scope: str) -> AuditResult:
     if scope in {"demo-route", "both"}:
         evidence.extend(_workspace_audit(root, findings, gaps))
     if gaps:
-        return _result("BLOCKED", scope, evidence, gaps)
+        return _result("BLOCKED", scope, evidence + findings, gaps)
 
     checks = _load_checks(root)
     if scope in {"repository", "both"}:
@@ -301,7 +574,7 @@ def audit_system(root: Path, scope: str) -> AuditResult:
         )
         checks._check_example_tree(root / "examples", findings)
     if findings:
-        return _result("FAIL", scope, findings, [])
+        return _result("FAIL", scope, evidence + findings, [])
     return _result("PASS", scope, evidence, [])
 
 

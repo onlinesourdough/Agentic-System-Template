@@ -114,6 +114,17 @@ action. A finding routes to the owning Build/Review lifecycle, or to AIOS
 improvement triage when work originated there. The local reference is not a
 universal domain rubric; each concrete System owns its own audit criteria.
 
+For `repository` and `both`, the audit also proves repository currentness. It
+attests the exact Git top-level, attached branch and same-named upstream,
+credential-free fetch and push identity, and complete staged, unstaged, and
+untracked state. It fetches the exact upstream branch into a temporary bare
+repository—not the audited repository—and reports the exact local, cached
+tracking, and fresh-live object IDs plus `equal`, `behind`, `ahead`, or
+`diverged`. Only a clean, live-equal repository can PASS. Cached refs and clean
+status alone are not live proof; unavailable or ambiguous access, detached or
+unexpected branch state, a missing upstream, or an unprovable live object is
+`BLOCKED`.
+
 The data model also has explicit recovery evidence. To exercise it:
 
 ```sh
@@ -136,7 +147,9 @@ No orchestration service, database, or external package is needed.
 
 ## Checks and prerequisites
 
-Prerequisite: Python 3.9 or newer. No third-party package is required.
+Prerequisite: Python 3.9 or newer. No third-party Python package is required.
+Repository audit scopes also require Git and non-interactive access to the
+configured upstream.
 
 Run the structural and stale-path checks, then the dependency-light tests:
 

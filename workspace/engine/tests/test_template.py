@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from shutil import copytree, rmtree
+from typing import Optional
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -73,7 +74,64 @@ class SystemTemplateTests(unittest.TestCase):
         tracer.trace_once(root, promote_example=True)
         tracer.trace_once(root, simulate_failure=True)
         tracer.trace_once(root, recover=True, promote_example=True)
+        upstream = tempfile.TemporaryDirectory()
+        self.addCleanup(upstream.cleanup)
+        upstream_path = Path(upstream.name) / "upstream.git"
+        self._run_git(None, "init", "--bare", "--initial-branch=main", str(upstream_path))
+        self._run_git(root, "init", "--initial-branch=main")
+        self._run_git(root, "config", "user.name", "System Template Tests")
+        self._run_git(root, "config", "user.email", "system-template@example.invalid")
+        self._run_git(root, "add", "--all")
+        self._run_git(root, "commit", "-m", "fixture baseline")
+        self._run_git(root, "remote", "add", "origin", upstream_path.as_uri())
+        self._run_git(root, "push", "--set-upstream", "origin", "main")
         return root
+
+    @staticmethod
+    def _run_git(root: Optional[Path], *arguments: str) -> str:
+        command = ["git"]
+        if root is not None:
+            command.extend(("-C", str(root)))
+        command.extend(arguments)
+        environment = os.environ.copy()
+        environment.update(
+            {
+                "GIT_AUTHOR_DATE": "2026-01-01T00:00:00Z",
+                "GIT_COMMITTER_DATE": "2026-01-01T00:00:00Z",
+                "GIT_TERMINAL_PROMPT": "0",
+            }
+        )
+        result = subprocess.run(
+            command,
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise AssertionError(result.stdout + result.stderr)
+        return result.stdout.strip()
+
+    def _advance_upstream(self, root: Path) -> str:
+        checkout = tempfile.TemporaryDirectory()
+        self.addCleanup(checkout.cleanup)
+        checkout_path = Path(checkout.name) / "upstream-work"
+        remote_url = self._run_git(root, "remote", "get-url", "origin")
+        self._run_git(None, "clone", "--quiet", remote_url, str(checkout_path))
+        self._run_git(checkout_path, "config", "user.name", "System Template Tests")
+        self._run_git(
+            checkout_path,
+            "config",
+            "user.email",
+            "system-template@example.invalid",
+        )
+        self._run_git(checkout_path, "commit", "--allow-empty", "-m", "upstream")
+        self._run_git(checkout_path, "push", "origin", "main")
+        return self._run_git(checkout_path, "rev-parse", "HEAD")
+
+    def _commit_local(self, root: Path) -> str:
+        self._run_git(root, "commit", "--allow-empty", "-m", "local")
+        return self._run_git(root, "rev-parse", "HEAD")
 
     @staticmethod
     def _tree_hash(root: Path) -> str:
@@ -83,6 +141,21 @@ class SystemTemplateTests(unittest.TestCase):
                 continue
             digest.update(path.relative_to(root).as_posix().encode("utf-8"))
             digest.update(path.read_bytes())
+        return digest.hexdigest()
+
+    @staticmethod
+    def _complete_tree_hash(root: Path) -> str:
+        digest = hashlib.sha256()
+        for path in sorted(root.rglob("*")):
+            digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+            if path.is_symlink():
+                digest.update(b"link")
+                digest.update(os.readlink(path).encode("utf-8"))
+            elif path.is_dir():
+                digest.update(b"directory")
+            elif path.is_file():
+                digest.update(b"file")
+                digest.update(path.read_bytes())
         return digest.hexdigest()
 
     @staticmethod
@@ -231,17 +304,17 @@ class SystemTemplateTests(unittest.TestCase):
                 encoding="utf-8"
             )
         )
-        before = self._tree_hash(root)
+        before = self._complete_tree_hash(root)
 
         result = audit.audit_system(root, "both")
 
-        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(self._complete_tree_hash(root), before)
         self.assertEqual(result.status, "PASS")
         self.assertEqual(result.scope, "both")
         self.assertEqual(result.evidence_gaps, [])
         self.assertEqual(result.next_action, "No action; keep the audit read-only.")
         self.assertIn(
-            {"name": "healthy-reference", "scope": "both", "expected_status": "PASS"},
+            {"name": "healthy-live-equal", "scope": "both", "expected_status": "PASS"},
             fixture["cases"],
         )
         self.assertTrue(any("failure and recovery" in item for item in result.evidence))
@@ -254,11 +327,11 @@ class SystemTemplateTests(unittest.TestCase):
             + "\npython3 workspace/engine/missing_audit_command.py\n",
             encoding="utf-8",
         )
-        before = self._tree_hash(root)
+        before = self._complete_tree_hash(root)
 
         result = audit.audit_system(root, "repository")
 
-        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(self._complete_tree_hash(root), before)
         self.assertEqual(result.status, "FAIL")
         self.assertEqual(result.evidence_gaps, [])
         self.assertEqual(
@@ -302,13 +375,162 @@ class SystemTemplateTests(unittest.TestCase):
     def test_repository_audit_does_not_read_workspace_scope(self) -> None:
         root = self._auditable_seed()
         (root / "workspace/history/runs.jsonl").unlink()
-        before = self._tree_hash(root)
+        self._run_git(root, "add", "--all")
+        self._run_git(root, "commit", "-m", "remove run-family evidence")
+        self._run_git(root, "push", "origin", "main")
+        before = self._complete_tree_hash(root)
 
         result = audit.audit_system(root, "repository")
 
-        self.assertEqual(self._tree_hash(root), before)
+        self.assertEqual(self._complete_tree_hash(root), before)
         self.assertEqual(result.status, "PASS")
         self.assertEqual(result.scope, "repository")
+
+    def test_repository_audit_proves_equal_ahead_and_diverged(self) -> None:
+        for expected_relation in ("equal", "ahead", "diverged"):
+            with self.subTest(relation=expected_relation):
+                root = self._auditable_seed()
+                if expected_relation == "ahead":
+                    self._commit_local(root)
+                elif expected_relation == "diverged":
+                    self._advance_upstream(root)
+                    self._commit_local(root)
+                before = self._complete_tree_hash(root)
+
+                result = audit.audit_system(root, "repository")
+
+                self.assertEqual(self._complete_tree_hash(root), before)
+                self.assertEqual(
+                    result.status,
+                    "PASS" if expected_relation == "equal" else "FAIL",
+                )
+                self.assertEqual(result.evidence_gaps, [])
+                self.assertTrue(
+                    any(
+                        f"relation={expected_relation}" in item
+                        and "local=" in item
+                        and "live=" in item
+                        for item in result.evidence
+                    ),
+                    result.evidence,
+                )
+
+    def test_cached_tracking_ref_is_not_live_proof(self) -> None:
+        root = self._auditable_seed()
+        local_oid = self._run_git(root, "rev-parse", "HEAD")
+        cached_oid = self._run_git(root, "rev-parse", "@{upstream}")
+        live_oid = self._advance_upstream(root)
+        self.assertEqual(cached_oid, local_oid)
+        self.assertNotEqual(live_oid, cached_oid)
+        before = self._complete_tree_hash(root)
+
+        result = audit.audit_system(root, "repository")
+
+        self.assertEqual(self._complete_tree_hash(root), before)
+        self.assertEqual(result.status, "FAIL")
+        self.assertEqual(result.evidence_gaps, [])
+        self.assertTrue(
+            any(
+                f"local={local_oid}" in item
+                and f"cached_tracking={cached_oid}" in item
+                and f"live={live_oid}" in item
+                and "relation=behind" in item
+                for item in result.evidence
+            ),
+            result.evidence,
+        )
+
+    def test_repository_audit_fails_for_dirty_state_without_mutation(self) -> None:
+        root = self._auditable_seed()
+        readme = root / "README.md"
+        readme.write_text(readme.read_text(encoding="utf-8") + "\nstaged\n")
+        self._run_git(root, "add", "README.md")
+        readme.write_text(readme.read_text(encoding="utf-8") + "unstaged\n")
+        (root / "untracked.txt").write_text("untracked\n", encoding="utf-8")
+        porcelain = self._run_git(
+            root, "status", "--porcelain=v2", "--untracked-files=all"
+        )
+        self.assertIn("1 MM", porcelain)
+        self.assertIn("? untracked.txt", porcelain)
+        before = self._complete_tree_hash(root)
+
+        result = audit.audit_system(root, "repository")
+
+        self.assertEqual(self._complete_tree_hash(root), before)
+        self.assertEqual(result.status, "FAIL")
+        self.assertTrue(
+            any("worktree/index is not clean" in item for item in result.evidence)
+        )
+
+    def test_repository_audit_blocks_for_unprovable_git_state(self) -> None:
+        cases = (
+            ("unavailable", "fresh live upstream object"),
+            ("missing-live", "fresh live upstream object"),
+            ("ambiguous", "remote identity is missing or ambiguous"),
+            ("missing-upstream", "branch.main.remote"),
+            ("detached", "current branch (detached or missing)"),
+            ("unexpected", "current branch is unexpected"),
+        )
+        for problem, expected_gap in cases:
+            with self.subTest(problem=problem):
+                root = self._auditable_seed()
+                if problem == "unavailable":
+                    unavailable = tempfile.TemporaryDirectory()
+                    self.addCleanup(unavailable.cleanup)
+                    missing = Path(unavailable.name) / "missing.git"
+                    self._run_git(root, "remote", "set-url", "origin", missing.as_uri())
+                elif problem == "missing-live":
+                    remote_url = self._run_git(root, "remote", "get-url", "origin")
+                    remote_path = Path(remote_url.removeprefix("file://"))
+                    self._run_git(
+                        None,
+                        "--git-dir",
+                        str(remote_path),
+                        "update-ref",
+                        "-d",
+                        "refs/heads/main",
+                    )
+                elif problem == "ambiguous":
+                    self._run_git(
+                        root,
+                        "config",
+                        "--add",
+                        "remote.origin.url",
+                        "file:///second-upstream.git",
+                    )
+                elif problem == "missing-upstream":
+                    self._run_git(root, "branch", "--unset-upstream")
+                elif problem == "detached":
+                    self._run_git(root, "checkout", "--detach")
+                else:
+                    self._run_git(root, "branch", "-m", "unexpected")
+                before = self._complete_tree_hash(root)
+
+                result = audit.audit_system(root, "repository")
+
+                self.assertEqual(self._complete_tree_hash(root), before)
+                self.assertEqual(result.status, "BLOCKED")
+                self.assertTrue(
+                    any(expected_gap in gap for gap in result.evidence_gaps),
+                    result.evidence_gaps,
+                )
+
+    def test_repository_audit_does_not_disclose_remote_credentials(self) -> None:
+        root = self._auditable_seed()
+        self._run_git(
+            root,
+            "remote",
+            "set-url",
+            "origin",
+            "https://secret-token@example.invalid/System-template.git",
+        )
+        before = self._complete_tree_hash(root)
+
+        result = audit.audit_system(root, "repository")
+
+        self.assertEqual(self._complete_tree_hash(root), before)
+        self.assertEqual(result.status, "BLOCKED")
+        self.assertNotIn("secret-token", json.dumps(result.as_dict()))
 
     def test_audit_blocks_for_missing_failure_or_recovery_evidence(self) -> None:
         cases = (

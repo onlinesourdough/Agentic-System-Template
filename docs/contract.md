@@ -98,6 +98,24 @@ not a universal audit contract for other Systems. Downstream adoption remains
 an explicit decision for each owning System after this generic proof; this seed
 creates no speculative downstream copy.
 
+For `repository` and `both`, currentness evidence includes the exact Git
+top-level, attached branch and its same-named upstream branch, one
+credential-free fetch and push identity, and complete staged, unstaged, and
+untracked status. The implementation reads the exact live upstream branch into
+an ephemeral bare repository, reads the local branch into that same temporary
+object graph, and reports exact local, cached-tracking, and fresh-live commit
+IDs with one relation: `equal`, `behind`, `ahead`, or `diverged`. It never
+fetches into or updates the audited repository. Therefore a clean worktree and
+a cached tracking ref are not live proof. A dirty state or non-equal relation
+is `FAIL`; missing or ambiguous access, detached or unexpected branch state,
+missing upstream configuration, or an unprovable live object is `BLOCKED`.
+
+This is a System Template-local reference pattern, not a cross-repository
+dependency or parity obligation. A concrete System owns its domain criteria
+and explicitly adopts any useful part of the pattern; the template does not
+become its currentness owner. No global schema, central ledger, sync service,
+or downstream repair path is introduced.
+
 For `demo-route`, the audit treats failure and recovery as discoverable only
 when their referenced JSON objects stay inside the owning run directory, exist,
 and identify the failed run/eval failure or recovery run/failed predecessor

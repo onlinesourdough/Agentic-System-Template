@@ -2,8 +2,33 @@
   "cases": [
     {
       "expected_status": "PASS",
-      "name": "healthy-reference",
+      "name": "healthy-live-equal",
       "scope": "both"
+    },
+    {
+      "expected_status": "FAIL",
+      "name": "live-behind-cached-equal",
+      "scope": "repository"
+    },
+    {
+      "expected_status": "FAIL",
+      "name": "live-ahead",
+      "scope": "repository"
+    },
+    {
+      "expected_status": "FAIL",
+      "name": "live-diverged",
+      "scope": "repository"
+    },
+    {
+      "expected_status": "FAIL",
+      "name": "dirty-worktree-or-index",
+      "scope": "repository"
+    },
+    {
+      "expected_status": "BLOCKED",
+      "name": "live-upstream-unavailable-ambiguous-or-unprovable",
+      "scope": "repository"
     },
     {
       "expected_status": "FAIL",
