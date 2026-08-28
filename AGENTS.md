@@ -3,6 +3,8 @@
 This repository is the neutral, standalone seed for persistent Agentic Systems.
 Keep it small enough to understand by reading this file, `README.md`, and the
 primary skill at `.agents/skills/system-template/SKILL.md`.
+Repository-local skill navigation and ownership are documented at
+`.agents/skills/README.md`.
 
 ## Canonical model
 

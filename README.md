@@ -34,6 +34,8 @@ The root shell is `AGENTS.md`, this file, and the primary System skill at
 `.agents/skills/system-template/SKILL.md`. Hidden tool configuration is kept
 minimal. The repository is a reference that can be copied or studied; another
 system does not need to install or import it to run.
+Repository-local skill navigation and the adoption ownership boundary are in
+[`.agents/skills/README.md`](.agents/skills/README.md).
 
 The ledger records a run ID, timestamps, status, input/output/eval/proof
 references, the relevant previous run, and failure or recovery evidence. It

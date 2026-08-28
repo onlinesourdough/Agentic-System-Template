@@ -40,14 +40,68 @@ class SystemTemplateTests(unittest.TestCase):
         self.assertEqual(checks.check_structure(ROOT), [])
         self.assertTrue((ROOT / "workspace" / "history" / "runs.jsonl").is_file())
 
-    def test_workspace_readme_is_required(self) -> None:
+    def test_required_readmes_are_required(self) -> None:
+        for relative in ("workspace/README.md", ".agents/skills/README.md"):
+            with self.subTest(relative=relative):
+                temporary, root = self._temporary_seed()
+                self.addCleanup(temporary.cleanup)
+                (root / relative).unlink()
+
+                errors = checks.check_structure(root)
+
+                self.assertIn(f"required path is missing: {relative}", errors)
+
+    def test_repository_local_skill_navigation_is_canonical(self) -> None:
+        skills_root = ROOT / ".agents" / "skills"
+        entrypoints = {
+            path.relative_to(skills_root).as_posix()
+            for path in skills_root.rglob("SKILL.md")
+        }
+        navigation = " ".join(
+            (skills_root / "README.md").read_text(encoding="utf-8").lower().split()
+        )
+
+        self.assertTrue(
+            {"audit-system/SKILL.md", "system-template/SKILL.md"}.issubset(
+                entrypoints
+            )
+        )
+        self.assertTrue(all(path.count("/") == 1 for path in entrypoints))
+        self.assertTrue(all(marker in navigation for marker in checks.SKILL_NAVIGATION_MARKERS))
+        for relative in ("AGENTS.md", "README.md"):
+            self.assertIn(
+                ".agents/skills/README.md",
+                (ROOT / relative).read_text(encoding="utf-8"),
+            )
+
+    def test_local_skill_layout_denials_and_extension_boundary(self) -> None:
+        cases = (
+            (
+                ".agents/skills/system-template/references/nested/SKILL.md",
+                "nested skill entrypoint",
+            ),
+            (".agents/skills/manage-skills/SKILL.md", "skill payload"),
+            (".agents/skills/global-skills/copied.md", "skill payload"),
+        )
+        for relative, expected in cases:
+            with self.subTest(relative=relative):
+                temporary, root = self._temporary_seed()
+                self.addCleanup(temporary.cleanup)
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("test payload\n", encoding="utf-8")
+                errors = checks.check_structure(root)
+                self.assertTrue(any(expected in error for error in errors), errors)
+
         temporary, root = self._temporary_seed()
         self.addCleanup(temporary.cleanup)
-        (root / "workspace" / "README.md").unlink()
-
-        errors = checks.check_structure(root)
-
-        self.assertIn("required path is missing: workspace/README.md", errors)
+        entrypoint = root / ".agents/skills/domain-eval/SKILL.md"
+        entrypoint.parent.mkdir()
+        entrypoint.write_text(
+            "---\nname: domain-eval\ndescription: System-local eval.\n---\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(checks.check_structure(root), [])
 
     def test_public_boundary_requires_several_needed_responsibilities(self) -> None:
         for relative in ("README.md", "docs/contract.md"):

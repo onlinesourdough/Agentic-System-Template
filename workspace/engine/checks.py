@@ -33,6 +33,7 @@ TOOLCHAIN_ROOT_FILES = {
 REQUIRED_PATHS = (
     "AGENTS.md",
     "README.md",
+    ".agents/skills/README.md",
     ".agents/skills/system-template/SKILL.md",
     ".agents/skills/audit-system/SKILL.md",
     "workspace/README.md",
@@ -49,6 +50,20 @@ REQUIRED_PATHS = (
     "docs/validation.md",
 )
 STALE_ROOT_NAMES = {"engine", "scripts", "tests"}
+FORBIDDEN_LOCAL_SKILL_PAYLOADS = {
+    "global-skill",
+    "global-skills",
+    "manage-skills",
+}
+SKILL_NAVIGATION_MARKERS = (
+    ".agents/skills/<name>/skill.md",
+    "`system-template` is the primary system entrypoint",
+    "`audit-system` is the separate, read-only accumulated-state audit",
+    "system- or domain-specific repeatable method or eval",
+    "cross-project and global skills remain harness- or plugin-installed outside this repository",
+    "concrete system owns its local skills",
+    "does not overwrite those skills later",
+)
 CURATED_EXAMPLE_FIELDS = {
     "curated",
     "evaluation_outcome",
@@ -116,6 +131,42 @@ def _contains_stale_language(text: str) -> List[str]:
     return [phrase for phrase in forbidden if phrase in lowered]
 
 
+def _check_skill_navigation(root: Path, errors: List[str]) -> None:
+    """Keep repository-local skill discovery flat and owner-local."""
+
+    skills_root = root / ".agents" / "skills"
+    if not skills_root.is_dir():
+        return
+
+    for path in sorted(skills_root.rglob("*")):
+        relative = path.relative_to(skills_root)
+        parts = {part.lower().replace("_", "-") for part in relative.parts}
+        if path.name == "SKILL.md" and len(relative.parts) != 2:
+            errors.append(f"nested skill entrypoint is not allowed: {relative.as_posix()}")
+        if parts.intersection(FORBIDDEN_LOCAL_SKILL_PAYLOADS):
+            errors.append(
+                f"Global/manage skill payload is not repository-local: {relative.as_posix()}"
+            )
+
+    navigation = skills_root / "README.md"
+    if not navigation.is_file():
+        return
+    normalized_navigation = " ".join(
+        navigation.read_text(encoding="utf-8").lower().split()
+    )
+
+    for marker in SKILL_NAVIGATION_MARKERS:
+        if marker not in normalized_navigation:
+            errors.append(f"skill navigation lacks required boundary: {marker}")
+
+    for relative in ("AGENTS.md", "README.md"):
+        path = root / relative
+        if path.is_file() and ".agents/skills/README.md" not in path.read_text(
+            encoding="utf-8"
+        ):
+            errors.append(f"public shell does not link skill navigation: {relative}")
+
+
 def check_structure(root: Path) -> List[str]:
     """Return structural violations; an empty list means the shell is valid."""
 
@@ -143,6 +194,8 @@ def check_structure(root: Path) -> List[str]:
     for relative in REQUIRED_PATHS:
         if not (root / relative).exists():
             errors.append(f"required path is missing: {relative}")
+
+    _check_skill_navigation(root, errors)
 
     for path in (root / "workspace", root / "examples", root / "docs"):
         if path.is_symlink():
