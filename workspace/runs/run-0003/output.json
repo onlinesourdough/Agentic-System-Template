@@ -1,9 +1,0 @@
-{
-  "previous_run_id": "run-0002",
-  "previous_run_relation": "recovery",
-  "recovered_from": "run-0002",
-  "result": "The primary System demo route completed deterministically.",
-  "route": "demo",
-  "run_id": "run-0003",
-  "status": "succeeded"
-}

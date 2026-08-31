@@ -1,9 +1,0 @@
-{
-  "previous_run_id": null,
-  "previous_run_relation": null,
-  "recovered_from": null,
-  "result": "The demo route returned a carefully formatted but irrelevant inventory note.",
-  "route": "demo",
-  "run_id": "run-0000",
-  "status": "succeeded"
-}

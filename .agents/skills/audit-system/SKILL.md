@@ -1,33 +1,43 @@
 ---
 name: audit-system
-description: Read-only route for checking accumulated System Template drift in an explicit scope.
+description: Perform a read-only, agent-led inspection of an explicit concrete System scope using ordinary file, Git, and runtime tools, returning PASS, FAIL, or BLOCKED with evidence and gaps.
 ---
 
-# Audit System reference skill
+# Audit System
 
-This concise skill routes a periodic, accumulated-state audit. It is distinct
-from a per-run semantic eval and from per-change Review: it reads whether the
-current System truth, evidence, recovery relation, and documented local routes
-still agree after change has accumulated.
+Use this route to inspect accumulated System state after work has changed or
+drift may have developed. It is separate from one-output evaluation and from
+per-change Review.
 
-1. Select exactly one scope: `repository`, named `demo-route`, or `both`.
-2. For `repository` or `both`, require the exact Git top-level, an attached
-   branch tracking its same-named upstream branch, one credential-free fetch
-   and push identity, and the complete staged, unstaged, and untracked state.
-   Read the exact upstream branch freshly into an ephemeral bare repository;
-   do not update the audited repository's objects, refs, index, or worktree.
-3. Compare the exact local and fresh-live commit IDs and report exactly
-   `equal`, `behind`, `ahead`, or `diverged`. A cached tracking ref and a clean
-   status are evidence, but are never substitutes for the fresh live read.
-4. Run `python3 workspace/engine/audit_system.py --scope <scope>`.
-5. Return the reported `PASS`, `FAIL`, or `BLOCKED` with its evidence, gaps,
-   and next action. Missing or ambiguous access, a detached or unexpected
-   branch, a missing upstream, or an unprovable live object cannot PASS.
-6. Route a finding to the owning Build/Review lifecycle, or to AIOS
-   improvement triage when that is where the work originated.
+## Method
 
-The audit starts and remains read-only. It performs no fast-forward, pull,
-commit, push, stash, rebase, merge, force operation, issue action, run, ledger
-line, example, repair, or other external action. Its local criteria and
-fixtures belong to System Template. A concrete System owns its domain criteria
-and explicitly decides whether to adopt this pattern.
+1. Name one explicit scope and the owning System's applicable criteria. Include
+   only the repository, workspace, operation, evidence family, runtime surface,
+   or combination actually requested.
+2. Identify the required evidence and stop conditions before inspection. Treat
+   missing, ambiguous, inaccessible, or unprovable required evidence as a gap;
+   never assume it passes.
+3. Inspect owner instructions, workspace truth, outputs, evaluation evidence,
+   failures, recoveries, and operating proof relevant to the scope with ordinary
+   read-only file and runtime tools.
+4. When repository currentness is in scope, attest the exact Git root,
+   branch/upstream, credential-free remote identity, complete index/worktree
+   state, exact local object, and a freshly read live upstream object. Cached
+   tracking refs are not live proof. Use a temporary object store if ancestry
+   must be established; do not fetch into the audited repository.
+5. Compare the observed state with the owning System's documented criteria and
+   prior evidence. Cite exact files, objects, commands, or runtime observations
+   sufficient to replay the conclusion.
+6. Return the scope, status, evidence, evidence gaps, and smallest next action.
+
+## Status and stop behavior
+
+- `PASS`: every required criterion is supported by current evidence.
+- `FAIL`: available evidence proves drift, contradiction, or a failed criterion.
+- `BLOCKED`: required evidence or safe read access is unavailable or ambiguous.
+
+The audit starts and remains read-only. It performs no repair, run creation,
+ledger or example write, issue action, commit, push, pull, fast-forward, stash,
+rebase, merge, force operation, deployment, or settings change. Stop and route
+findings to the owning lifecycle; the concrete System owns the criteria and any
+later authorized repair.

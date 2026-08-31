@@ -1,5 +1,0 @@
-{
-  "input_ref": "fixture://system-template/demo-route",
-  "request_kind": "deterministic-demo",
-  "route": "demo"
-}

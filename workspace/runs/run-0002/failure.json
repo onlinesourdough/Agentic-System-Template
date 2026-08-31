@@ -1,7 +1,0 @@
-{
-  "code": "SEMANTIC_EVAL_FAILED",
-  "evaluation_ref": "workspace/runs/run-0002/evaluation.json",
-  "message": "The output is structurally valid but fails the local semantic checkpoint.",
-  "recoverable": true,
-  "run_id": "run-0002"
-}
