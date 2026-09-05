@@ -1,8 +1,9 @@
 # Agentic System Template
 
 This repository is the neutral, instruction-owned seed for persistent Agentic
-Systems. Read this file, `README.md`, and the primary skill at
-`.agents/skills/agentic-system-template/SKILL.md`.
+Systems. When establishing or maintaining a concrete System, read `README.md`
+and `.agents/skills/agentic-system-template/SKILL.md`. For bounded repository
+edits, read only the documentation relevant to the change.
 
 ## Canonical model
 
