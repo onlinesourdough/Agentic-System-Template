@@ -1,4 +1,8 @@
+![Agentic System Template banner](assets/branding/system-banner.png)
+
 # Agentic System Template
+
+<a href="assets/branding/system-icon.png"><img src="assets/branding/system-icon.png" alt="Agentic System Template icon" width="32" height="32"></a>
 
 Agentic System Template is a small, instruction-owned seed for persistent
 Agentic Systems. It explains the ownership and operating boundaries without
