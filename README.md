@@ -35,6 +35,21 @@ Those needs do not imply a universal workspace layout, ledger, schema,
 database, runtime, or audit rubric. The owning System chooses the smallest
 durable form that makes its own work operable and inspectable.
 
+## Operating decisions and proof
+
+Each concrete System owns its material decisions, operational documentation,
+proof, and recovery in the source-of-truth records it chooses. Those records
+retain decision context, rationale, consequences, and supersession history when
+the decision changes; the template prescribes neither an ADR format nor a
+directory.
+
+The [primary System method](.agents/skills/agentic-system-template/SKILL.md#method)
+is the canonical procedure for decisions, representative defect or domain proof,
+honest handback evidence, and sensitive-data safeguards. Its software and data
+directions apply only when those responsibilities exist, so a concrete
+non-software System does not inherit browser E2E, a database, or a generic
+lifecycle framework.
+
 ## Instruction surface
 
 ```text
