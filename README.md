@@ -43,12 +43,11 @@ retain decision context, rationale, consequences, and supersession history when
 the decision changes; the template prescribes neither an ADR format nor a
 directory.
 
-The [primary System method](.agents/skills/agentic-system-template/SKILL.md#method)
-is the canonical procedure for decisions, representative defect or domain proof,
-honest handback evidence, and sensitive-data safeguards. Its software and data
-directions apply only when those responsibilities exist, so a concrete
-non-software System does not inherit browser E2E, a database, or a generic
-lifecycle framework.
+The [primary System method](.agents/skills/agentic-system-template/SKILL.md)
+establishes domain responsibilities, operating truth and specialist proof.
+Shared Spec, Build, Review and Ship come from the installed AIOS plugin as
+routed by [AGENTS.md](AGENTS.md). Generic repository audits use Review; local
+domain audit methods are added only when the concrete System needs them.
 
 ## Instruction surface
 
@@ -56,12 +55,10 @@ lifecycle framework.
 AGENTS.md
 README.md
 .agents/skills/agentic-system-template/SKILL.md
-.agents/skills/audit-system/SKILL.md
 ```
 
-`agentic-system-template` is the primary route for establishing or maintaining
-a concrete System. `audit-system` is a separate read-only inspection route.
-Both are instructions only and require no bundled engine or AIOS runtime.
+Direct System tasks continue in their current session. The seed carries no
+copied generic lifecycle or tracking methods and requires no AIOS runtime.
 
 ## Adoption and ownership
 
