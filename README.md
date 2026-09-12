@@ -45,9 +45,9 @@ directory.
 
 The [primary System method](.agents/skills/agentic-system-template/SKILL.md)
 establishes domain responsibilities, operating truth and specialist proof.
-Shared Spec, Build, Review and Ship come from the installed AIOS plugin as
-routed by [AGENTS.md](AGENTS.md). Generic repository audits use Review; local
-domain audit methods are added only when the concrete System needs them.
+Substantive Spec, Build, Review and authorized Ship use the installed AIOS plugin
+as routed by [AGENTS.md](AGENTS.md). Narrow edits need only affected context and
+proof. Requested repository audits use Review; local domain audit methods are added only when the concrete System needs them.
 
 ## Instruction surface
 
@@ -67,3 +67,27 @@ state, criteria, evidence, and evolution. This template does not become a
 dependency, synchronize downstream copies, or overwrite owner-local behavior
 later. Cross-project and Global Skills stay outside the repository in the
 harness or plugin that provides them.
+
+Each maintained specialist skill has a quoted SemVer in YAML `metadata.version`,
+starting at `"1.0.0"`. Bump only the skill whose contract changes: patch for
+compatible corrections, minor for compatible capabilities, major for breaking
+invocation or operating-contract changes. Skill versions are independent of
+System and package versions. Create skills only for actual responsibilities.
+
+## Instruction maintenance evidence
+
+The 2026-09-12 instruction audit used OpenAI's
+[Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)
+(2026-09-11): precise triggers, contextual reads, proportionate checks and
+completion within existing authority. These are model-neutral authoring choices;
+static validation does not establish model behavior.
+
+For skill authoring or instruction-link changes, run the seed-only structural
+check with Ruby's standard YAML parser (no installed gems required):
+
+```sh
+ruby tests/validate-system-template.rb
+```
+
+It checks the skill inventory, frontmatter, quoted SemVer and local links;
+operating-contract changes also need representative domain proof.

@@ -7,13 +7,22 @@ edits, read only the documentation relevant to the change.
 
 ## Shared lifecycle
 
-Use the installed AIOS plugin (0.4.0 or later) for shared procedures:
-`aios-spec-work`, `aios-build-work`, `aios-review-work` and `aios-ship-work`.
-Spec owns conditional technology selection; Review owns generic repository
-health audits. Resolve these skills through the harness, not copied files or
-hardcoded cache paths. This repository owns its requirements, specialist
-methods, checks, release facts and recovery. Keep those facts here and load
-only the phase and local context needed for the change.
+For substantive lifecycle work, use the installed AIOS plugin (0.4.0 or later):
+`aios-spec-work` for unresolved scope or technology decisions, `aios-build-work`
+for accepted implementation, `aios-review-work` for acceptance or a requested
+repository audit, and `aios-ship-work` for authorized delivery. Resolve only the
+needed procedure through the harness; do not copy it or hardcode cache paths.
+This repository owns its requirements, specialist methods, checks, release
+facts and recovery. A clear mechanical or typo edit needs only relevant context,
+the scoped diff and its affected check, without a mandatory skill load or full
+suite.
+
+Complete the authorized result through affected checks, diff review and in-scope
+fixes before handing back. Carry explicit session authorization across phases;
+local procedures do not require renewed approval for the same action and scope.
+Pause only for a material missing decision, authority or required capability.
+Preserve delegated acceptance and delivery boundaries; implementation authority
+does not authorize new publication, external actions or destinations.
 
 Work in the current task by default, including when opened directly from the
 sidebar. Use `aios-orchestrate-workers` only for requested or concretely
@@ -47,7 +56,7 @@ depend on an AIOS runtime, or receive later template overwrites.
 ## Agent routes
 
 The primary skill establishes the concrete System's operating contract.
-Generic repository inspection uses shared `aios-review-work`; add local audit
+Requested repository audits use shared `aios-review-work`; add local audit
 criteria only for a concrete domain responsibility. Specialist skills may carry
 supporting references when their workflow needs them. Cross-project and Global
 Skills remain harness- or plugin-installed elsewhere.
