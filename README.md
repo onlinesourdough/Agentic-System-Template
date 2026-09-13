@@ -4,20 +4,20 @@
 
 <a href="assets/branding/system-icon.png"><img src="assets/branding/system-icon.png" alt="Agentic System Template icon" width="32" height="32"></a>
 
-Agentic System Template is a small, instruction-owned seed for persistent
-Agentic Systems. It explains the ownership and operating boundaries without
-shipping a generic implementation that every concrete System would inherit.
+Agentic System Template is optional guidance for an independent specialist
+solution with ongoing operational responsibility.
 
 ## When a System is justified
-
-AIOS has three first-class concepts: Space, System, and Project. Templates and
-Skills are supporting constructs.
 
 Use a Skill when the reusable value is an instruction or method with clear
 inputs, proof, and stop conditions but no independent operational
 responsibility. Use a System when a reusable capability must remain
 independently operable across runs and outcomes and materially owns several
 responsibilities as one cohesive capability.
+
+AIOS supplies context and shared methods; the native harness manages projects,
+sessions, tools and installation. This template defines no project registry or
+universal system architecture.
 
 ## What the concrete System owns
 

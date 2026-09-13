@@ -1,9 +1,8 @@
 # Agentic System Template
 
-This repository is the neutral, instruction-owned seed for persistent Agentic
-Systems. When establishing or maintaining a concrete System, read `README.md`
-and `.agents/skills/agentic-system-template/SKILL.md`. For bounded repository
-edits, read only the documentation relevant to the change.
+When establishing or maintaining a concrete System, read the optional guidance
+in `README.md` and `.agents/skills/agentic-system-template/SKILL.md`. For bounded
+repository edits, read only the documentation relevant to the change.
 
 ## Shared lifecycle
 
@@ -33,10 +32,7 @@ not a dependency of the product at runtime; if unavailable, report the method
 gap and perform only work adequately covered by the local contract. Do not
 recreate generic skills locally.
 
-## Canonical model
-
-AIOS has three first-class concepts: Space, System, and Project. Templates and
-Skills support those concepts; they are not additional AIOS types.
+## Specialist scope
 
 Use a Skill when the reusable value is an instruction or method without
 independent operational responsibility. Use a System when a reusable capability

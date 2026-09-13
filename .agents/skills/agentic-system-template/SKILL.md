@@ -1,18 +1,19 @@
 ---
 name: agentic-system-template
-description: Establish a persistent System's responsibilities, operating truth, specialist methods and recovery. Use for System adoption or contract changes, not bounded Project work.
+description: Establish responsibilities, operating truth, specialist methods and recovery for an independent specialist solution. Use for System adoption or operational contract changes.
 metadata:
-  version: "1.0.0"
+  version: "1.0.1"
 ---
 
 # Establish a System contract
 
-Use for an independently operable reusable capability. Resolve shared phase
-procedures through AIOS as directed by local AGENTS; this route supplies the
-System-specific ownership and adoption work.
+Use when ongoing independent operational responsibility justifies a System.
+Resolve shared phase procedures through AIOS as directed by local AGENTS;
+this route supplies the System-specific ownership and adoption work.
 
 1. Name purpose, operator, cohesive responsibilities, invoke condition, natural
-   return and proof. If a method or bounded Project is sufficient, stop creation.
+   return and proof. If a reusable skill or work in an existing project is
+   sufficient, use that home without creating a System.
 2. Inspect existing domain truth and prior operational evidence relevant to the
    change. Define only the durable state needed to continue operation; no
    universal layout, ledger, schema, database or runtime is required.
